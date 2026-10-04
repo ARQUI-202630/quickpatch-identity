@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Compuerta 0 del Documento de Pruebas: corre las pruebas unitarias antes de cada push.
+# Instalación, una vez por clon: copiar este archivo como .githooks/pre-push en el repo y correr
+#   git config core.hooksPath .githooks
+# Es una ayuda local: `git push --no-verify` lo salta, y el CI vuelve a correr todo igual.
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+echo "[QA] Pruebas unitarias antes del push..."
+if compgen -G "*.sln" > /dev/null || compgen -G "*.slnx" > /dev/null; then
+  proyectos=$(find tests/unit -name '*.csproj' 2> /dev/null)
+  if [ -z "$proyectos" ]; then
+    echo "[QA] No hay proyectos de pruebas unitarias en tests/unit/."
+    exit 1
+  fi
+  for p in $proyectos; do
+    dotnet test "$p" --verbosity quiet || resultado=1
+  done
+elif [ -f build.gradle ] || [ -f build.gradle.kts ]; then
+  if [ -x gradlew ]; then ./gradlew test --quiet; else gradle test --quiet; fi
+  resultado=$?
+elif [ -f pom.xml ]; then
+  if [ -x mvnw ]; then ./mvnw -q test; else mvn -q test; fi
+  resultado=$?
+elif [ -f angular.json ]; then
+  npm run test:ci --silent
+  resultado=$?
+elif [ -f pubspec.yaml ]; then
+  flutter test
+  resultado=$?
+else
+  echo "[QA] Este repo no tiene proyecto con pruebas: nada que correr."
+  exit 0
+fi
+
+if [ "${resultado:-0}" -ne 0 ]; then
+  echo "[QA] Push cancelado: fallaron las pruebas unitarias. Corrígelas antes de subir."
+  exit 1
+fi
+echo "[QA] Pruebas aprobadas."
