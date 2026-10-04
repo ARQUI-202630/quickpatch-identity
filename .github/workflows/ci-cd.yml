@@ -9,7 +9,7 @@ name: CI/CD
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
   push:
     branches: [develop, "release/**", main]
 
@@ -49,3 +49,22 @@ jobs:
     with:
       ambiente: produccion
       imagen: ${{ needs.imagen.outputs.imagen }}
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/dependency-review.yml@main
+
+  quality-gate:
+    name: quality-gate
+    if: always()
+    needs: [ci, dependency-review]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validar compuertas
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          DEP_RESULT: ${{ needs.dependency-review.result }}
+        run: |
+          test "$CI_RESULT" = "success"
+          test "$DEP_RESULT" = "success" || test "$DEP_RESULT" = "skipped"
