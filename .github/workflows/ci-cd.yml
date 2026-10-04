@@ -1,0 +1,51 @@
+# CI/CD de un servicio .NET de QUICKPATCH: identity, actors, catalog, service-request,
+# ranking, payments y communication. Copiar en el repo como .github/workflows/ci-cd.yml.
+# La lógica vive en quickpatch-infrastructure; aquí solo se decide qué corre en cada rama:
+#   PR a develop   → lint y pruebas unitarias
+#   push develop   → además, pruebas de integración
+#   push release/* → además, imagen en GHCR y despliegue en QA (VM2)
+#   push main      → la misma imagen de QA, desplegada en producción (VM3)
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop, "release/**", main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/ci-dotnet.yml@main
+    with:
+      integracion: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
+
+  imagen:
+    needs: ci
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main')
+    permissions:
+      contents: read
+      packages: write
+    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/imagen.yml@main
+
+  qa:
+    needs: imagen
+    if: startsWith(github.ref, 'refs/heads/release/') && needs.imagen.outputs.imagen != ''
+    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/deploy-k3s.yml@main
+    with:
+      ambiente: qa
+      imagen: ${{ needs.imagen.outputs.imagen }}
+
+  produccion:
+    needs: imagen
+    if: github.ref == 'refs/heads/main' && needs.imagen.outputs.imagen != ''
+    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/deploy-k3s.yml@main
+    with:
+      ambiente: produccion
+      imagen: ${{ needs.imagen.outputs.imagen }}
