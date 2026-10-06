@@ -1,0 +1,67 @@
+using QuickPatch.Identity.Domain.Tenants;
+using QuickPatch.Identity.Domain.Users;
+
+namespace QuickPatch.Identity.Application.Abstractions;
+
+/// <summary>
+/// Ejecuta un trabajo en una transacción que primero fija el tenant de la sesión (<c>SET LOCAL app.current_tenant</c>,
+/// DD 10.2) para que RLS aísle los datos. Al terminar guarda los cambios y confirma.
+/// </summary>
+public interface ITenantUnitOfWork
+{
+    Task<T> ExecuteAsync<T>(Guid tenantId, Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);
+}
+
+public interface ITenantRepository
+{
+    Task<Tenant?> FindAsync(Guid tenantId, CancellationToken cancellationToken);
+}
+
+public interface IUserRepository
+{
+    Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken);
+
+    Task<User?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken);
+
+    Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
+
+    void Add(User user);
+}
+
+/// <summary>Hash de contraseñas (RN-U2, RNF-03).</summary>
+public interface IPasswordHasher
+{
+    string Hash(string password);
+
+    bool Verify(string password, string passwordHash);
+
+    /// <summary>Gasta el mismo tiempo que una verificación real; evita revelar si un correo existe.</summary>
+    void SimulateVerify(string password);
+}
+
+/// <summary>Emite el JWT RS256 con <c>sub</c>, <c>tenant_id</c> y <c>role</c>.</summary>
+public interface ITokenIssuer
+{
+    IssuedToken Issue(User user);
+}
+
+public sealed record IssuedToken(string AccessToken, int ExpiresInSeconds);
+
+/// <summary>El correo ya existe en el tenant (violación de la unicidad de RN-U1 en la base de datos).</summary>
+public sealed class DuplicateEmailException : Exception
+{
+    public DuplicateEmailException()
+        : base("El correo ya está registrado en el tenant.")
+    {
+    }
+
+    public DuplicateEmailException(string message)
+        : base(message)
+    {
+    }
+
+    public DuplicateEmailException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}

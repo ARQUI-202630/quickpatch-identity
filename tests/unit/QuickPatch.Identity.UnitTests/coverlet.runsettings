@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cobertura de las pruebas unitarias: Domain, Application y Api.
+  Infrastructure (EF Core, PostgreSQL, BCrypt y firma de tokens) se mide con las pruebas de integración (Testcontainers),
+  que el CI ejecuta en cada push y combina en el mismo reporte.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Include>[QuickPatch.Identity.Domain]*,[QuickPatch.Identity.Application]*,[QuickPatch.Identity.Api]*</Include>
+          <ExcludeByFile>**/Migrations/*.cs</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
