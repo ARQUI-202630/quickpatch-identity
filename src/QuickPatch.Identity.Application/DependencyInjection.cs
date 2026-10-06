@@ -1,5 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 
+using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Users;
+using QuickPatch.Identity.Domain.Users;
+
 namespace QuickPatch.Identity.Application;
 
 /// <summary>
@@ -10,6 +14,12 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(LockoutPolicy.Default);
+        services.AddScoped<RegisterClientHandler>();
+        services.AddScoped<LoginHandler>();
+        services.AddScoped<GetCurrentUserHandler>();
         return services;
     }
 }

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY global.json Directory.Build.props ./
+COPY global.json Directory.Build.props .editorconfig ./
 COPY src/ src/
 RUN dotnet publish "src/QuickPatch.Identity.Api/QuickPatch.Identity.Api.csproj" -c Release -o /app/publish
 
