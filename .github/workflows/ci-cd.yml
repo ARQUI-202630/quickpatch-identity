@@ -1,6 +1,7 @@
 # CI/CD de un servicio .NET de QUICKPATCH: identity, actors, catalog, service-request,
-# ranking, payments y communication. Copiar en el repo como .github/workflows/ci-cd.yml.
-# La lógica vive en quickpatch-infrastructure; aquí solo se decide qué corre en cada rama:
+# ranking, payments y communication.
+# El CI vive en este archivo (SCRUM-337). El despliegue (imagen, QA y producción) todavía usa
+# los workflows de quickpatch-infrastructure hasta que se traslade (SCRUM-338). Qué corre en cada rama:
 #   PR a develop   → lint y pruebas unitarias
 #   push develop   → además, pruebas de integración
 #   push release/* → además, imagen en GHCR y despliegue en QA (VM2)
@@ -21,10 +22,57 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # CI propio del repositorio (SCRUM-337): formato, compilación, pruebas y cobertura ≥ 80%.
+  # Las pruebas de integración (Testcontainers) corren en los push a develop y release/*.
   ci:
-    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/ci-dotnet.yml@main
-    with:
-      integracion: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
+    name: Lint, pruebas y cobertura
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      INTEGRACION: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restaurar dependencias
+        run: dotnet restore
+
+      - name: Formato (lint)
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar
+        run: dotnet build --no-restore -c Release
+
+      - name: Pruebas unitarias (tests/unit)
+        run: |
+          for p in $(find tests/unit -name '*.csproj'); do
+            dotnet test "$p" --no-build -c Release --collect:"XPlat Code Coverage" \
+              --logger trx --results-directory resultados
+          done
+
+      - name: Pruebas de integración (tests/integration, Testcontainers)
+        if: env.INTEGRACION == 'true'
+        run: |
+          for p in $(find tests/integration -name '*.csproj'); do
+            dotnet test "$p" --no-build -c Release --collect:"XPlat Code Coverage" \
+              --logger trx --results-directory resultados
+          done
+
+      - name: Cobertura mínima
+        run: python3 .github/scripts/cobertura.py cobertura 80 "resultados/**/coverage.cobertura.xml"
+
+      - name: Guardar resultados de las pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-dotnet
+          path: resultados
+          if-no-files-found: ignore
 
   imagen:
     needs: ci
