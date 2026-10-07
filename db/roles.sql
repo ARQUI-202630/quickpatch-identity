@@ -18,6 +18,13 @@ GRANT USAGE ON SCHEMA public TO identity_app, identity_platform;
 GRANT SELECT ON tenants TO identity_app;
 GRANT SELECT, INSERT, UPDATE ON users, technician_profiles TO identity_app;
 
--- Operaciones de plataforma (RF-21, DD 10.4): gestión de tenants. Pool propio de 2 conexiones.
+-- Auditoría (DD 5.14): el servicio registra y consulta las de su tenant (RLS); nunca las modifica ni las borra.
+GRANT SELECT, INSERT ON audit_logs TO identity_app;
+
+-- Operaciones de plataforma (RF-21, DD 10.4): gestión de tenants y su auditoría (filas sin tenant).
+-- El servicio adopta el rol con SET LOCAL ROLE solo dentro de la transacción de plataforma; NOINHERIT para que
+-- identity_app no herede BYPASSRLS fuera de ella.
 GRANT SELECT, INSERT, UPDATE ON tenants TO identity_platform;
 GRANT SELECT ON users, technician_profiles TO identity_platform;
+GRANT SELECT, INSERT ON audit_logs TO identity_platform;
+GRANT identity_platform TO identity_app WITH INHERIT FALSE, SET TRUE;

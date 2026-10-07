@@ -55,7 +55,13 @@ public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
 
         rsa = RSA.Create();
         rsa.ImportFromPem(this.options.PrivateKeyPem);
-        credentials = new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256);
+        // Sin caché de firmadores: la caché global de Microsoft.IdentityModel identifica la llave por su contenido y
+        // reutilizaría el firmador de una instancia ya liberada (Dispose) si otro host del mismo proceso usa la misma llave.
+        var signingKey = new RsaSecurityKey(rsa)
+        {
+            CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false },
+        };
+        credentials = new SigningCredentials(signingKey, SecurityAlgorithms.RsaSha256);
         ValidationKey = new RsaSecurityKey(rsa.ExportParameters(includePrivateParameters: false));
     }
 

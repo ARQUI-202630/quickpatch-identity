@@ -14,6 +14,8 @@ public static class Problems
     public const string Unauthorized = Base + "no-autenticado";
     public const string Forbidden = Base + "no-autorizado";
     public const string ChannelNotConfigured = Base + "canal-sin-tenant";
+    public const string NotFound = Base + "no-encontrado";
+    public const string PlatformTenant = Base + "tenant-plataforma";
 
     /// <summary>Agrega <c>correlationId</c> y el tipo según el código a todo Problem Details del servicio.</summary>
     public static void Customize(ProblemDetailsContext context)

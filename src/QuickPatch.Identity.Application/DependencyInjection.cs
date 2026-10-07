@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Platform;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Users;
 
@@ -22,6 +23,8 @@ public static class DependencyInjection
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();
+        services.AddScoped<ListTenantsHandler>();
+        services.AddScoped<UpdateTenantStatusHandler>();
         return services;
     }
 }

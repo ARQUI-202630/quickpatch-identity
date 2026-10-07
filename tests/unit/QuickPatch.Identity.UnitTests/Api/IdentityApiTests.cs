@@ -49,6 +49,9 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ITenantRepository>(Store);
             services.AddSingleton<IUserRepository>(Store);
             services.AddSingleton<ITechnicianProfileRepository>(Store);
+            services.AddSingleton<IPlatformUnitOfWork>(Store);
+            services.AddSingleton<IPlatformTenantRepository>(Store);
+            services.AddSingleton<IAuditLog>(Store);
             services.AddSingleton<IPasswordHasher, FakeHasher>();
             services.Configure<HealthCheckServiceOptions>(o => o.Registrations.Clear());
         });

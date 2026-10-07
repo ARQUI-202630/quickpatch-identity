@@ -12,13 +12,14 @@ Lo crea DevOps desde Ansible Vault. Nunca se guarda en el repositorio.
 |`app-connection`|Cadena de conexión con `identity_app` (sin `BYPASSRLS`)|
 |`jwt-private-key`|Llave privada RSA en PEM con la que Identity firma los tokens (ADR-018)|
 |`admin-email`, `admin-password`|Opcionales: administrador inicial del tenant (`admin_tenant`). Si existen, Identity lo crea al arrancar si todavía no existe|
+|`platform-admin-email`, `platform-admin-password`|Opcionales: administrador de la plataforma (`admin_plataforma`), que gestiona los tenants desde el panel (RF-21). Se crea en el tenant del canal, que en el MVP es el dueño de la plataforma|
 
 ```bash
 kubectl -n quickpatch create secret generic identity-secretos \
   --from-literal=migrator-connection='Host=<vm-datos>;Port=5432;Database=db_identity;Username=identity_migrator;Password=<...>' \
   --from-literal=app-connection='Host=<vm-datos>;Port=5432;Database=db_identity;Username=identity_app;Password=<...>' \
   --from-file=jwt-private-key=identity-private.pem \
-  --from-literal=admin-email='<correo>' --from-literal=admin-password='<contraseña>'
+  --from-literal=admin-email='<correo>' --from-literal=admin-password='<contraseña>' \n  --from-literal=platform-admin-email='<correo>' --from-literal=platform-admin-password='<contraseña>'
 ```
 
 La llave pública correspondiente (`openssl rsa -in identity-private.pem -pubout`) es la que reciben los demás servicios.

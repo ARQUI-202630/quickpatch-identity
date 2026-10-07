@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using QuickPatch.Identity.Domain.Audit;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -14,6 +15,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<User> Users => Set<User>();
 
     public DbSet<TechnicianProfile> TechnicianProfiles => Set<TechnicianProfile>();
+
+    public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +70,21 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.TenantId).HasDatabaseName("ix_technician_profiles_tenant");
             e.HasIndex(x => new { x.TenantId, x.VerificationStatus }).HasDatabaseName("ix_technician_profiles_tenant_status");
+        });
+
+        modelBuilder.Entity<AuditEntry>(e =>
+        {
+            e.ToTable("audit_logs");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.ActorUserId).HasColumnName("actor_user_id");
+            e.Property(x => x.Action).HasColumnName("action").HasMaxLength(100);
+            e.Property(x => x.TargetId).HasColumnName("target_id");
+            e.Property(x => x.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(x => x.CreatedAt).HasDatabaseName("ix_audit_logs_created_at");
+            e.HasIndex(x => new { x.TenantId, x.Action }).HasDatabaseName("ix_audit_logs_tenant_action");
         });
     }
 }

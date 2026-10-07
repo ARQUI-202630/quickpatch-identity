@@ -129,4 +129,25 @@ public class TenantAdminBootstrapTests
 
         Assert.Empty(store.Users);
     }
+
+    [Fact]
+    public async Task Bootstrap_CreaTambienElAdministradorDeLaPlataforma()
+    {
+        await Bootstrap(new BootstrapOptions
+        {
+            AdminEmail = "admin@quickpatch.co",
+            AdminPassword = "Segura123",
+            PlatformAdminEmail = "plataforma@quickpatch.co",
+            PlatformAdminPassword = "Segura123",
+        }).StartAsync(CancellationToken.None);
+
+        Assert.Equal([Roles.AdminTenant, Roles.AdminPlataforma], store.Users.Select(u => u.Role));
+    }
+
+    [Fact]
+    public async Task RolNoAdministrativo_SeRechaza()
+    {
+        await Assert.ThrowsAsync<ArgumentException>(() => Handler().HandleAsync(
+            new EnsureTenantAdminCommand(tenant, "a@quickpatch.co", "Segura123", "Admin", Roles.Cliente), CancellationToken.None));
+    }
 }

@@ -30,6 +30,7 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.Configure<PasswordOptions>(configuration.GetSection(PasswordOptions.Section));
         services.Configure<ChannelOptions>(configuration.GetSection(ChannelOptions.Section));
+        services.Configure<PlatformOptions>(configuration.GetSection(PlatformOptions.Section));
 
         services.AddDbContext<IdentityDbContext>(options =>
             options.UseNpgsql(configuration.GetConnectionString(ConnectionStringName)));
@@ -38,6 +39,9 @@ public static class DependencyInjection
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ITechnicianProfileRepository, TechnicianProfileRepository>();
+        services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
+        services.AddScoped<IPlatformTenantRepository, PlatformTenantRepository>();
+        services.AddScoped<IAuditLog, AuditLog>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton<RsaTokenIssuer>();
         services.AddSingleton<ITokenIssuer>(sp => sp.GetRequiredService<RsaTokenIssuer>());

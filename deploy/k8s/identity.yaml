@@ -67,6 +67,10 @@ spec:
               valueFrom: { secretKeyRef: { name: identity-secretos, key: admin-email, optional: true } }
             - name: Bootstrap__AdminPassword
               valueFrom: { secretKeyRef: { name: identity-secretos, key: admin-password, optional: true } }
+            - name: Bootstrap__PlatformAdminEmail
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: platform-admin-email, optional: true } }
+            - name: Bootstrap__PlatformAdminPassword
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: platform-admin-password, optional: true } }
           readinessProbe:
             httpGet: { path: /health/ready, port: http }
             periodSeconds: 10
