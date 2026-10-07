@@ -4,7 +4,8 @@ Lee primero:
 
 - README.md
 - AGENTS.md
-- contracts/
+- contracts/api-gateway/openapi/ (REST)
+- contracts/kafka/events/ (eventos)
 
 Stack obligatorio: ASP.NET Core / .NET 10.
 

@@ -1,3 +1,6 @@
-[submodule "contracts"]
-	path = contracts
-	url = https://github.com/ARQUI-202630/quickpatch-contracts.git
+[submodule "contracts/api-gateway"]
+	path = contracts/api-gateway
+	url = https://github.com/ARQUI-202630/quickpatch-api-gateway.git
+[submodule "contracts/kafka"]
+	path = contracts/kafka
+	url = https://github.com/ARQUI-202630/quickpatch-kafka.git

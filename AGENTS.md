@@ -4,7 +4,7 @@ Repositorio autónomo de un microservicio QUICKPATCH.
 
 - Stack: ASP.NET Core / .NET 10.
 - Responsabilidad funcional: ver `README.md`.
-- Contratos versionados: `contracts/`.
+- Contratos versionados: `contracts/api-gateway/openapi/` (REST, submódulo `quickpatch-api-gateway`) y `contracts/kafka/events/` (eventos, submódulo `quickpatch-kafka`).
 - Persistencia: EF Core + Npgsql cuando aplique.
 - Kafka únicamente mediante contratos versionados.
 - Preservar `tenantId`, `eventId` y `correlationId`.
