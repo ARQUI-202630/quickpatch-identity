@@ -102,3 +102,9 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/QuickPatch.Identity.
 - Imagen: `Dockerfile` en la raíz (multi-stage, usuario sin privilegios).
 - Puerto: `8080`.
 - Probes para k3s: `GET /health/live` (el proceso responde) y `GET /health/ready` (el servicio y sus dependencias están listos).
+
+## Despliegue
+
+- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
+- Secretos, primer despliegue y alta del tenant: `deploy/k8s/README.md`.
+- **Administrador inicial:** si `Bootstrap__AdminEmail` y `Bootstrap__AdminPassword` están configurados (secreto), Identity crea al arrancar el `admin_tenant` del tenant del canal cuando todavía no existe. Ningún endpoint registra administradores.
