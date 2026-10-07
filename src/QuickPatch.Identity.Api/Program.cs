@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 
+using QuickPatch.Identity.Api.Bootstrap;
 using QuickPatch.Identity.Api.Endpoints;
 using QuickPatch.Identity.Api.Http;
 using QuickPatch.Identity.Api.Security;
@@ -24,6 +25,10 @@ builder.Services.AddHealthChecks();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddQuickPatchAuthentication(builder.Configuration);
+
+// Administrador inicial del tenant al desplegar (datos desde un secreto; vacío = no se crea).
+builder.Services.Configure<BootstrapOptions>(builder.Configuration.GetSection(BootstrapOptions.Section));
+builder.Services.AddHostedService<TenantAdminBootstrap>();
 
 var app = builder.Build();
 

@@ -1,0 +1,106 @@
+# Despliegue de Identity en k3s (namespace quickpatch), igual en QA y producción.
+# Primer despliegue: crear el Secret identity-secretos (deploy/k8s/README.md) y aplicar este archivo con
+#   kubectl apply -f deploy/k8s/identity.yaml
+# Después, el pipeline actualiza la imagen con `kubectl set image deployment/identity "*=<imagen>"`
+# (contenedor y migraciones a la vez) y espera el rolling update.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: identity-config
+  namespace: quickpatch
+  labels: { app: identity }
+data:
+  Jwt__Issuer: quickpatch-identity
+  Jwt__Audience: quickpatch
+  Jwt__Lifetime: "01:00:00"
+  # Tenant del canal (MVP con un solo tenant, DD 10.3). Debe existir en la tabla tenants.
+  Channel__TenantId: "00000000-0000-0000-0000-000000000001"
+  Bootstrap__AdminFullName: Administrador QUICKPATCH
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity
+  namespace: quickpatch
+  labels: { app: identity }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels: { app: identity }
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels: { app: identity }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        # La imagen declara USER app (por nombre); Kubernetes necesita el UID para verificar que no es root.
+        runAsUser: 1654
+        runAsGroup: 1654
+      initContainers:
+        # Migraciones (EF Core bundle) con el rol identity_migrator, dueño de las tablas (DD 10.2).
+        - name: migraciones
+          image: ghcr.io/arqui-202630/quickpatch-identity:pendiente
+          command: ["/app/efbundle", "--connection", "$(MIGRATOR_CONNECTION)"]
+          env:
+            - name: MIGRATOR_CONNECTION
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: migrator-connection } }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+      containers:
+        - name: identity
+          image: ghcr.io/arqui-202630/quickpatch-identity:pendiente
+          ports:
+            - { name: http, containerPort: 8080 }
+          envFrom:
+            - configMapRef: { name: identity-config }
+          env:
+            - name: ConnectionStrings__Identity
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: app-connection } }
+            - name: Jwt__PrivateKeyPem
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: jwt-private-key } }
+            - name: Bootstrap__AdminEmail
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: admin-email, optional: true } }
+            - name: Bootstrap__AdminPassword
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: admin-password, optional: true } }
+          readinessProbe:
+            httpGet: { path: /health/ready, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health/live, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          # Pendiente de medición (Documento de Infraestructura, 5.6); límite inicial dentro del presupuesto de VM3.
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { cpu: 500m, memory: 384Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity
+  namespace: quickpatch
+  labels: { app: identity }
+spec:
+  selector: { app: identity }
+  ports:
+    - { name: http, port: 8080, targetPort: http }
+---
+# El gateway quita /api y reenvía a Traefik (NodePort 30080); Traefik elige el servicio por la ruta del contrato.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: identity
+  namespace: quickpatch
+spec:
+  rules:
+    - http:
+        paths:
+          - { path: /v1/auth, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          - { path: /v1/users, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
