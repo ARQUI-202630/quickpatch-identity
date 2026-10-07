@@ -18,6 +18,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton(LockoutPolicy.Default);
         services.AddScoped<RegisterClientHandler>();
+        services.AddScoped<RegisterTechnicianHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
         return services;

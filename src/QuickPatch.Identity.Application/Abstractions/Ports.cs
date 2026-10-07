@@ -1,3 +1,4 @@
+using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
 
@@ -21,11 +22,24 @@ public interface IUserRepository
 {
     Task<bool> EmailExistsAsync(string normalizedEmail, CancellationToken cancellationToken);
 
-    Task<User?> FindByEmailAsync(string normalizedEmail, CancellationToken cancellationToken);
+    Task<bool> DocumentExistsAsync(string documentId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Busca por correo y bloquea la fila (<c>FOR UPDATE</c>) hasta el fin de la transacción, para que dos logins
+    /// simultáneos no cuenten mal los intentos fallidos (RN-U4).
+    /// </summary>
+    Task<User?> FindByEmailForUpdateAsync(string normalizedEmail, CancellationToken cancellationToken);
 
     Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
 
     void Add(User user);
+}
+
+public interface ITechnicianProfileRepository
+{
+    Task<TechnicianProfile?> FindAsync(Guid userId, CancellationToken cancellationToken);
+
+    void Add(TechnicianProfile profile);
 }
 
 /// <summary>Hash de contraseñas (RN-U2, RNF-03).</summary>
@@ -61,6 +75,25 @@ public sealed class DuplicateEmailException : Exception
     }
 
     public DuplicateEmailException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>El documento ya existe en el tenant (unicidad de <c>users.document_id</c>, DD 5.2).</summary>
+public sealed class DuplicateDocumentException : Exception
+{
+    public DuplicateDocumentException()
+        : base("El documento ya está registrado en el tenant.")
+    {
+    }
+
+    public DuplicateDocumentException(string message)
+        : base(message)
+    {
+    }
+
+    public DuplicateDocumentException(string message, Exception innerException)
         : base(message, innerException)
     {
     }

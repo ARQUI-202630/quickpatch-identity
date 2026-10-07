@@ -9,6 +9,7 @@ public static class Problems
     public const string InvalidCredentials = Base + "credenciales-invalidas";
     public const string TenantDisabled = Base + "tenant-inactivo";
     public const string EmailTaken = Base + "correo-registrado";
+    public const string DocumentTaken = Base + "documento-registrado";
     public const string AccountLocked = Base + "cuenta-bloqueada";
     public const string Unauthorized = Base + "no-autenticado";
     public const string Forbidden = Base + "no-autorizado";

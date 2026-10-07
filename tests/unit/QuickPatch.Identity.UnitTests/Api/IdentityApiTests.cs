@@ -48,6 +48,7 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ITenantUnitOfWork>(Store);
             services.AddSingleton<ITenantRepository>(Store);
             services.AddSingleton<IUserRepository>(Store);
+            services.AddSingleton<ITechnicianProfileRepository>(Store);
             services.AddSingleton<IPasswordHasher, FakeHasher>();
             services.Configure<HealthCheckServiceOptions>(o => o.Registrations.Clear());
         });
@@ -206,14 +207,56 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
     {
         using var inactive = factory.WithWebHostBuilder(b => b.UseSetting("Channel:TenantId", IdentityApiFactory.InactiveTenant.ToString()));
         using var client = inactive.CreateClient();
-        var email = await RegisterAsync(client);
+        var email = NewEmail();
+        factory.Store.Users.Add(QuickPatch.Identity.Domain.Users.User.Create(
+            IdentityApiFactory.InactiveTenant, email, "hash:Segura123", "cliente", "Beto", null, DateTimeOffset.UtcNow));
+        using var registro = await client.PostAsJsonAsync(Register, new { email = NewEmail(), password = "Segura123", fullName = "Beto" });
 
         using var response = await client.PostAsJsonAsync(Login, new { email, password = "Segura123" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, registro.StatusCode);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var body = await Json(response);
         Assert.Equal("https://quickpatch.internal/problems/tenant-inactivo", body.GetProperty("type").GetString());
         Assert.Equal("tenant is disabled", body.GetProperty("detail").GetString());
+    }
+
+    [Fact]
+    public async Task RegistrarTecnico_201ConPerfilPendiente_YElDocumentoRepetidoDa409()
+    {
+        using var client = factory.CreateClient();
+        var documento = Guid.NewGuid().ToString("N")[..12];
+        object Body(string email) => new { email, password = "Segura123", fullName = "Carlos Pérez", phone = "3001234567", documentId = documento, specialtyId = Guid.NewGuid(), role = "tecnico" };
+        var email = NewEmail();
+
+        using var creado = await client.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), Body(email));
+        using var repetido = await client.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), Body(NewEmail()));
+        using var login = await client.PostAsJsonAsync(Login, new { email, password = "Segura123" });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await Json(login)).GetProperty("accessToken").GetString());
+        using var me = await client.GetAsync(Me);
+
+        Assert.Equal(HttpStatusCode.Created, creado.StatusCode);
+        Assert.Equal("pendiente", (await Json(creado)).GetProperty("verificationStatus").GetString());
+        Assert.Equal(HttpStatusCode.Conflict, repetido.StatusCode);
+        Assert.Equal("https://quickpatch.internal/problems/documento-registrado", (await Json(repetido)).GetProperty("type").GetString());
+        Assert.Equal("pendiente", (await Json(me)).GetProperty("verificationStatus").GetString());
+        Assert.Equal("tecnico", (await Json(me)).GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task RegistrarTecnico_DatosInvalidos_400_YSinCanal_503()
+    {
+        using var client = factory.CreateClient();
+        using var sinCanal = factory.WithWebHostBuilder(b => b.UseSetting("Channel:TenantId", Guid.Empty.ToString()));
+        using var clientSinCanal = sinCanal.CreateClient();
+        var body = new { email = "malo", password = "Segura123", fullName = "Carlos", phone = "300", documentId = "1", specialtyId = Guid.Empty, role = "cliente" };
+
+        using var invalido = await client.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), body);
+        using var noCanal = await clientSinCanal.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, invalido.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, noCanal.StatusCode);
     }
 
     [Fact]

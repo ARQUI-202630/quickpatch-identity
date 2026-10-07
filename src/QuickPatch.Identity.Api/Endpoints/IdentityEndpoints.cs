@@ -7,6 +7,7 @@ using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Common;
+using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Users;
 using QuickPatch.Identity.Infrastructure.Options;
 
@@ -14,11 +15,16 @@ namespace QuickPatch.Identity.Api.Endpoints;
 
 public sealed record RegisterClientRequest(string? Email, string? Password, string? FullName, string? Phone);
 
+public sealed record RegisterTechnicianRequest(
+    string? Email, string? Password, string? FullName, string? Phone, string? DocumentId, Guid? SpecialtyId, string? Role);
+
 public sealed record LoginRequest(string? Email, string? Password);
 
-public sealed record UserProfile(Guid Id, string Email, string FullName, string Role, string? Phone)
+/// <summary>Esquema <c>UserProfile</c> del contrato; <see cref="VerificationStatus"/> solo para técnicos y proveedores.</summary>
+public sealed record UserProfile(Guid Id, string Email, string FullName, string Role, string? Phone, string? VerificationStatus)
 {
-    public static UserProfile From(User user) => new(user.Id, user.Email, user.FullName, user.Role, user.Phone);
+    public static UserProfile From(User user, TechnicianProfile? profile = null) =>
+        new(user.Id, user.Email, user.FullName, user.Role, user.Phone, profile?.VerificationStatus);
 }
 
 public sealed record LoginResponse(string AccessToken, string TokenType, int ExpiresIn, UserProfile User);
@@ -29,6 +35,7 @@ public static class IdentityEndpoints
     public static IEndpointRouteBuilder MapIdentityEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/v1/auth/register/client", RegisterClientAsync).WithName("registerClient").AllowAnonymous();
+        app.MapPost("/v1/auth/register/technician", RegisterTechnicianAsync).WithName("registerTechnician").AllowAnonymous();
         app.MapPost("/v1/auth/login", LoginAsync).WithName("login").AllowAnonymous();
         app.MapGet("/v1/users/me", GetCurrentUserAsync).WithName("getCurrentUser").RequireAuthorization();
         return app;
@@ -54,10 +61,43 @@ public static class IdentityEndpoints
             return result switch
             {
                 RegisterClientResult.Registered registered => Results.Json(UserProfile.From(registered.User), statusCode: StatusCodes.Status201Created),
-                _ => Results.Problem(
+                RegisterClientResult.TenantDisabled => TenantDisabled(),
+                _ => EmailTaken(),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> RegisterTechnicianAsync(
+        RegisterTechnicianRequest body,
+        IOptions<ChannelOptions> channel,
+        RegisterTechnicianHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (channel.Value.TenantId == Guid.Empty)
+        {
+            return ChannelNotConfigured();
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(
+                new RegisterTechnicianCommand(
+                    channel.Value.TenantId, body.Email, body.Password, body.FullName, body.Phone, body.DocumentId, body.SpecialtyId, body.Role),
+                cancellationToken);
+
+            return result switch
+            {
+                RegisterTechnicianResult.Registered ok => Results.Json(UserProfile.From(ok.User, ok.Profile), statusCode: StatusCodes.Status201Created),
+                RegisterTechnicianResult.TenantDisabled => TenantDisabled(),
+                RegisterTechnicianResult.DocumentTaken => Results.Problem(
                     statusCode: StatusCodes.Status409Conflict,
-                    type: Problems.EmailTaken,
-                    title: "El correo ya está registrado"),
+                    type: Problems.DocumentTaken,
+                    title: "El documento ya está registrado"),
+                _ => EmailTaken(),
             };
         }
         catch (DomainValidationException ex)
@@ -91,11 +131,7 @@ public static class IdentityEndpoints
         {
             LoginResult.Succeeded ok => Results.Ok(new LoginResponse(ok.Token.AccessToken, "Bearer", ok.Token.ExpiresInSeconds, UserProfile.From(ok.User))),
             LoginResult.Locked locked => Locked(locked.Until, clock.GetUtcNow()),
-            LoginResult.TenantDisabled => Results.Problem(
-                statusCode: StatusCodes.Status403Forbidden,
-                type: Problems.TenantDisabled,
-                title: "La empresa está inactiva",
-                detail: "tenant is disabled"),
+            LoginResult.TenantDisabled => TenantDisabled(),
             _ => Results.Problem(
                 statusCode: StatusCodes.Status401Unauthorized,
                 type: Problems.InvalidCredentials,
@@ -110,10 +146,10 @@ public static class IdentityEndpoints
             return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
         }
 
-        var user = await handler.HandleAsync(authenticated.TenantId, authenticated.UserId, cancellationToken);
-        return user is null
+        var current = await handler.HandleAsync(authenticated.TenantId, authenticated.UserId, cancellationToken);
+        return current is null
             ? Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El usuario del token ya no existe.")
-            : Results.Ok(UserProfile.From(user));
+            : Results.Ok(UserProfile.From(current.User, current.Profile));
     }
 
     private static LockedResult Locked(DateTimeOffset until, DateTimeOffset now)
@@ -121,6 +157,17 @@ public static class IdentityEndpoints
         var seconds = Math.Max(1, (int)Math.Ceiling((until - now).TotalSeconds));
         return new LockedResult(seconds);
     }
+
+    private static IResult TenantDisabled() => Results.Problem(
+        statusCode: StatusCodes.Status403Forbidden,
+        type: Problems.TenantDisabled,
+        title: "La empresa está inactiva",
+        detail: "tenant is disabled");
+
+    private static IResult EmailTaken() => Results.Problem(
+        statusCode: StatusCodes.Status409Conflict,
+        type: Problems.EmailTaken,
+        title: "El correo ya está registrado");
 
     private static IResult ChannelNotConfigured() => Results.Problem(
         statusCode: StatusCodes.Status503ServiceUnavailable,
