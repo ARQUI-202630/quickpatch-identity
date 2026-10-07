@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 
 using QuickPatch.Identity.Application.Abstractions;
+using QuickPatch.Identity.Domain.Audit;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -8,11 +9,31 @@ using QuickPatch.Identity.Domain.Users;
 namespace QuickPatch.Identity.UnitTests.Support;
 
 /// <summary>Puertos en memoria. Emula RLS: solo se ven los datos del tenant de la transacción en curso.</summary>
-public sealed class InMemoryIdentityStore : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository
+public sealed class InMemoryIdentityStore
+    : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog
 {
     private Guid? currentTenant;
 
     public List<Tenant> Tenants { get; } = [];
+
+    public List<AuditEntry> Audit { get; } = [];
+
+    /// <summary>Cuántas transacciones de plataforma (identity_platform) se abrieron.</summary>
+    public int PlatformTransactions { get; private set; }
+
+    public async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken)
+    {
+        PlatformTransactions++;
+        return await work(cancellationToken);
+    }
+
+    public Task<IReadOnlyList<Tenant>> ListAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Tenant>>([.. Tenants.OrderBy(t => t.Name, StringComparer.Ordinal)]);
+
+    public Task<Tenant?> FindForUpdateAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        Task.FromResult(Tenants.SingleOrDefault(t => t.Id == tenantId));
+
+    public void Add(AuditEntry entry) => Audit.Add(entry);
 
     public List<User> Users { get; } = [];
 

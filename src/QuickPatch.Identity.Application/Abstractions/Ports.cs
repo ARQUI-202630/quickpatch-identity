@@ -1,3 +1,4 @@
+using QuickPatch.Identity.Domain.Audit;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -16,6 +17,30 @@ public interface ITenantUnitOfWork
 public interface ITenantRepository
 {
     Task<Tenant?> FindAsync(Guid tenantId, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Transacción de plataforma (DD 10.4): adopta el rol <c>identity_platform</c>, que no está limitado a un tenant,
+/// solo para la gestión de tenants y su auditoría. Al terminar guarda los cambios y confirma.
+/// </summary>
+public interface IPlatformUnitOfWork
+{
+    Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);
+}
+
+/// <summary>Tenants vistos desde la plataforma, sin filtro por tenant.</summary>
+public interface IPlatformTenantRepository
+{
+    Task<IReadOnlyList<Tenant>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>Busca el tenant para modificarlo dentro de la transacción de plataforma.</summary>
+    Task<Tenant?> FindForUpdateAsync(Guid tenantId, CancellationToken cancellationToken);
+}
+
+/// <summary>Registro de auditoría (<c>audit_logs</c>, DD 5.14).</summary>
+public interface IAuditLog
+{
+    void Add(AuditEntry entry);
 }
 
 public interface IUserRepository

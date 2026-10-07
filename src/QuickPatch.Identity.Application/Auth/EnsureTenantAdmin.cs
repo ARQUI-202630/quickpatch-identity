@@ -4,10 +4,11 @@ using QuickPatch.Identity.Domain.Users;
 namespace QuickPatch.Identity.Application.Auth;
 
 /// <summary>
-/// Administrador inicial del tenant (<c>admin_tenant</c>). Ningún endpoint registra administradores, así que el
-/// primero se crea al desplegar, con datos que llegan como secreto (nunca en el repositorio). Es idempotente.
+/// Administrador inicial del tenant (<c>admin_tenant</c>) o de la plataforma (<c>admin_plataforma</c>, que existe
+/// solo en el tenant dueño de la plataforma, DD 5.2). Ningún endpoint registra administradores, así que se crean al
+/// desplegar, con datos que llegan como secreto (nunca en el repositorio). Es idempotente.
 /// </summary>
-public sealed record EnsureTenantAdminCommand(Guid TenantId, string? Email, string? Password, string? FullName);
+public sealed record EnsureTenantAdminCommand(Guid TenantId, string? Email, string? Password, string? FullName, string Role = Roles.AdminTenant);
 
 public enum EnsureTenantAdminResult
 {
@@ -26,6 +27,11 @@ public sealed class EnsureTenantAdminHandler(
     public async Task<EnsureTenantAdminResult> HandleAsync(EnsureTenantAdminCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        if (command.Role is not (Roles.AdminTenant or Roles.AdminPlataforma))
+        {
+            throw new ArgumentException($"Rol de administrador no válido: {command.Role}", nameof(command));
+        }
+
         User.ValidateRegistration(command.Email, command.Password, command.FullName, phone: null);
         var email = User.NormalizeEmail(command.Email);
 
@@ -47,7 +53,7 @@ public sealed class EnsureTenantAdminHandler(
                     }
 
                     users.Add(User.Create(
-                        command.TenantId, email, hasher.Hash(command.Password!), Roles.AdminTenant, command.FullName!.Trim(), null, clock.GetUtcNow()));
+                        command.TenantId, email, hasher.Hash(command.Password!), command.Role, command.FullName!.Trim(), null, clock.GetUtcNow()));
                     return EnsureTenantAdminResult.Created;
                 },
                 cancellationToken);

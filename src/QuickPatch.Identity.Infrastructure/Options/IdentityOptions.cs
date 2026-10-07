@@ -24,6 +24,15 @@ public sealed class PasswordOptions
     public int WorkFactor { get; set; } = 12;
 }
 
+/// <summary>Operaciones de plataforma (sección <c>Platform</c>, DD 10.4).</summary>
+public sealed class PlatformOptions
+{
+    public const string Section = "Platform";
+
+    /// <summary>Rol <c>BYPASSRLS</c> que adopta la transacción de plataforma con <c>SET LOCAL ROLE</c>.</summary>
+    public string Role { get; set; } = "identity_platform";
+}
+
 /// <summary>
 /// Tenant del canal (sección <c>Channel</c>). En el registro y el login el tenant se resuelve por el canal y no
 /// por el cuerpo (RN-U5, DD 10.3). En el MVP opera un solo tenant, así que el canal es la instancia desplegada.

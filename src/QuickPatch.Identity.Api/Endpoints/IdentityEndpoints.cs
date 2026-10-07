@@ -5,9 +5,11 @@ using Microsoft.Extensions.Options;
 using QuickPatch.Identity.Api.Http;
 using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Platform;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Technicians;
+using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
 using QuickPatch.Identity.Infrastructure.Options;
 
@@ -29,6 +31,14 @@ public sealed record UserProfile(Guid Id, string Email, string FullName, string 
 
 public sealed record LoginResponse(string AccessToken, string TokenType, int ExpiresIn, UserProfile User);
 
+/// <summary>Esquema <c>Tenant</c> del contrato (1.2.0).</summary>
+public sealed record TenantResponse(Guid Id, string Name, string Nit, string Status, DateTimeOffset CreatedAt)
+{
+    public static TenantResponse From(Tenant tenant) => new(tenant.Id, tenant.Name, tenant.Nit, tenant.Status, tenant.CreatedAt);
+}
+
+public sealed record UpdateTenantStatusRequest(string? Status);
+
 /// <summary>Endpoints del contrato <c>identity.v1.yaml</c>.</summary>
 public static class IdentityEndpoints
 {
@@ -38,6 +48,12 @@ public static class IdentityEndpoints
         app.MapPost("/v1/auth/register/technician", RegisterTechnicianAsync).WithName("registerTechnician").AllowAnonymous();
         app.MapPost("/v1/auth/login", LoginAsync).WithName("login").AllowAnonymous();
         app.MapGet("/v1/users/me", GetCurrentUserAsync).WithName("getCurrentUser").RequireAuthorization();
+
+        // Operaciones de plataforma (RF-21, DD 10.4): solo admin_plataforma (RN-U6).
+        app.MapGet("/v1/platform/tenants", ListTenantsAsync).WithName("listTenants")
+            .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
+        app.MapPatch("/v1/platform/tenants/{id:guid}", UpdateTenantStatusAsync).WithName("updateTenantStatus")
+            .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
         return app;
     }
 
@@ -150,6 +166,43 @@ public static class IdentityEndpoints
         return current is null
             ? Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El usuario del token ya no existe.")
             : Results.Ok(UserProfile.From(current.User, current.Profile));
+    }
+
+    private static async Task<IResult> ListTenantsAsync(ListTenantsHandler handler, CancellationToken cancellationToken)
+    {
+        var tenants = await handler.HandleAsync(cancellationToken);
+        return Results.Ok(tenants.Select(TenantResponse.From));
+    }
+
+    private static async Task<IResult> UpdateTenantStatusAsync(
+        Guid id, UpdateTenantStatusRequest request, HttpContext context, UpdateTenantStatusHandler handler, CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var actor))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            var correlation = CorrelationId.Get(context);
+            var result = await handler.HandleAsync(
+                new UpdateTenantStatusCommand(id, request.Status, actor.UserId, actor.TenantId, correlation == Guid.Empty ? null : correlation.ToString()),
+                cancellationToken);
+            return result switch
+            {
+                UpdateTenantStatusResult.Updated ok => Results.Ok(TenantResponse.From(ok.Tenant)),
+                UpdateTenantStatusResult.NotFound => Results.Problem(
+                    statusCode: StatusCodes.Status404NotFound, type: Problems.NotFound, title: "El tenant no existe"),
+                _ => Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    type: Problems.PlatformTenant,
+                    title: "No se puede desactivar el tenant de la plataforma"),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
     }
 
     private static LockedResult Locked(DateTimeOffset until, DateTimeOffset now)
