@@ -1,0 +1,19 @@
+# Base de datos local de Identity Service (solo desarrollo). Uso: docker compose up -d
+# PostgreSQL 16, la misma versión de producción (VM4). Las contraseñas de aquí son solo locales.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./desarrollo/init-db.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - identity-datos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  identity-datos:

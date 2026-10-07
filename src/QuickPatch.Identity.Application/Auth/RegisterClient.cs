@@ -12,10 +12,14 @@ public abstract record RegisterClientResult
 
     /// <summary>RN-U1: el correo ya existe en el tenant (TD IDN-003, 409).</summary>
     public sealed record EmailTaken : RegisterClientResult;
+
+    /// <summary>RN-T1: el tenant del canal está inactivo (403).</summary>
+    public sealed record TenantDisabled : RegisterClientResult;
 }
 
 public sealed class RegisterClientHandler(
     ITenantUnitOfWork unitOfWork,
+    ITenantRepository tenants,
     IUserRepository users,
     IPasswordHasher hasher,
     TimeProvider clock)
@@ -32,6 +36,12 @@ public sealed class RegisterClientHandler(
                 command.TenantId,
                 async ct =>
                 {
+                    var tenant = await tenants.FindAsync(command.TenantId, ct);
+                    if (tenant is null || !tenant.IsActive)
+                    {
+                        return new RegisterClientResult.TenantDisabled();
+                    }
+
                     if (await users.EmailExistsAsync(email, ct))
                     {
                         return new RegisterClientResult.EmailTaken();

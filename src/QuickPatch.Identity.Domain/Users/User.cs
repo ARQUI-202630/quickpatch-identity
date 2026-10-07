@@ -18,6 +18,8 @@ public sealed class User
     public const int EmailMaxLength = 150;
     public const int FullNameMaxLength = 150;
     public const int PhoneMaxLength = 30;
+    public const int DocumentMinLength = 5;
+    public const int DocumentMaxLength = 30;
 
     private User(
         Guid id,
@@ -27,6 +29,7 @@ public sealed class User
         string role,
         string fullName,
         string? phone,
+        string? documentId,
         DateTimeOffset createdAt)
     {
         Id = id;
@@ -36,6 +39,7 @@ public sealed class User
         Role = role;
         FullName = fullName;
         Phone = phone;
+        DocumentId = documentId;
         CreatedAt = createdAt;
     }
 
@@ -52,6 +56,9 @@ public sealed class User
     public string FullName { get; }
 
     public string? Phone { get; }
+
+    /// <summary>Documento de identidad; obligatorio para técnicos y proveedores y único por tenant (DD 5.2).</summary>
+    public string? DocumentId { get; }
 
     public int FailedLoginAttempts { get; private set; }
 
@@ -96,6 +103,53 @@ public sealed class User
         }
     }
 
+    /// <summary>
+    /// Valida el registro de un técnico o proveedor (RF-02): los datos comunes, más teléfono y documento
+    /// obligatorios, especialidad y rol <c>tecnico</c> o <c>proveedor</c>.
+    /// </summary>
+    public static void ValidateTechnicianRegistration(
+        string? email, string? password, string? fullName, string? phone, string? documentId, Guid? specialtyId, string? role)
+    {
+        var errors = new Dictionary<string, string[]>();
+        try
+        {
+            ValidateRegistration(email, password, fullName, phone);
+        }
+        catch (DomainValidationException ex)
+        {
+            foreach (var (campo, mensajes) in ex.Errors)
+            {
+                errors[campo] = mensajes;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(phone) || phone.Trim().Length is < 7 or > PhoneMaxLength)
+        {
+            errors["phone"] = [$"El teléfono es obligatorio y debe tener entre 7 y {PhoneMaxLength} caracteres."];
+        }
+
+        var documento = documentId?.Trim() ?? string.Empty;
+        if (documento.Length is < DocumentMinLength or > DocumentMaxLength)
+        {
+            errors["documentId"] = [$"El documento debe tener entre {DocumentMinLength} y {DocumentMaxLength} caracteres."];
+        }
+
+        if (specialtyId is null || specialtyId == Guid.Empty)
+        {
+            errors["specialtyId"] = ["La especialidad es obligatoria."];
+        }
+
+        if (role is not (Roles.Tecnico or Roles.Proveedor))
+        {
+            errors["role"] = ["El rol debe ser 'tecnico' o 'proveedor'."];
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new DomainValidationException(errors);
+        }
+    }
+
     /// <summary>Crea un usuario ya validado con el hash de su contraseña.</summary>
     public static User Create(
         Guid tenantId,
@@ -104,7 +158,8 @@ public sealed class User
         string role,
         string fullName,
         string? phone,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        string? documentId = null)
     {
         if (!Roles.All.Contains(role))
         {
@@ -112,8 +167,9 @@ public sealed class User
         }
 
         var telefono = string.IsNullOrWhiteSpace(phone) ? null : phone.Trim();
+        var documento = string.IsNullOrWhiteSpace(documentId) ? null : documentId.Trim();
         return new User(
-            Guid.CreateVersion7(createdAt), tenantId, NormalizeEmail(email), passwordHash, role, fullName.Trim(), telefono, createdAt);
+            Guid.CreateVersion7(createdAt), tenantId, NormalizeEmail(email), passwordHash, role, fullName.Trim(), telefono, documento, createdAt);
     }
 
     public bool IsLocked(DateTimeOffset now) => LockedUntil is { } until && until > now;

@@ -43,7 +43,7 @@ public sealed partial class LoginHandler(
             async ct =>
             {
                 var now = clock.GetUtcNow();
-                var user = email.Length == 0 ? null : await users.FindByEmailAsync(email, ct);
+                var user = email.Length == 0 ? null : await users.FindByEmailForUpdateAsync(email, ct);
                 if (user is null)
                 {
                     hasher.SimulateVerify(password);

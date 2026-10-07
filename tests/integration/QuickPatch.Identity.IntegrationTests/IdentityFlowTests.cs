@@ -168,12 +168,14 @@ public class IdentityFlowTests(IdentityEnvironment env)
     {
         using var client = env.AppFor(IdentityEnvironment.InactiveTenant).CreateClient();
         var email = NewEmail();
-        using (await client.PostAsJsonAsync(Register, new { email, password = "Segura123", fullName = "Beto" }))
-        {
-        }
+        await env.ExecuteAdminAsync(
+            "INSERT INTO users (id, tenant_id, email, password_hash, role, full_name, failed_login_attempts, created_at) " +
+            $"VALUES ('{Guid.NewGuid()}', '{IdentityEnvironment.InactiveTenant}', '{email}', '{BCrypt.Net.BCrypt.HashPassword("Segura123", 4)}', 'cliente', 'Beto', 0, now())");
+        using var registro = await client.PostAsJsonAsync(Register, new { email = NewEmail(), password = "Segura123", fullName = "Beto" });
 
         using var response = await client.PostAsJsonAsync(Login, new { email, password = "Segura123" });
 
+        Assert.Equal(HttpStatusCode.Forbidden, registro.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("tenant is disabled", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString());
     }
@@ -191,6 +193,73 @@ public class IdentityFlowTests(IdentityEnvironment env)
         using var response = await clientB.PostAsJsonAsync(Login, new { email, password = "Segura123" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RegistroDeTecnico_CreaPerfilPendiente_YElDocumentoEsUnicoPorTenant()
+    {
+        using var client = env.App.CreateClient();
+        var documento = Guid.NewGuid().ToString("N")[..12];
+        var especialidad = Guid.NewGuid();
+        object Body(string email) => new { email, password = "Segura123", fullName = "Carlos Pérez", phone = "3001234567", documentId = documento, specialtyId = especialidad, role = "proveedor" };
+        var email = NewEmail();
+
+        using var creado = await client.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), Body(email));
+        using var repetido = await client.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), Body(NewEmail()));
+        var id = (await creado.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        Assert.Equal(HttpStatusCode.Created, creado.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, repetido.StatusCode);
+        Assert.Equal("pendiente", (string)(await env.ScalarAdminAsync("SELECT verification_status FROM technician_profiles WHERE user_id = @u", ("u", id)))!);
+        Assert.Equal(especialidad, (Guid)(await env.ScalarAdminAsync("SELECT specialty_id FROM technician_profiles WHERE user_id = @u", ("u", id)))!);
+        Assert.Equal(documento, (string)(await env.ScalarAdminAsync("SELECT document_id FROM users WHERE id = @u", ("u", id)))!);
+    }
+
+    [Fact]
+    public async Task Rls_PerfilesDeTecnico_SoloVisiblesEnSuTenant()
+    {
+        using var client = env.App.CreateClient();
+        using (await client.PostAsJsonAsync(new Uri("/v1/auth/register/technician", UriKind.Relative), new
+        {
+            email = NewEmail(),
+            password = "Segura123",
+            fullName = "Carlos",
+            phone = "3001234567",
+            documentId = Guid.NewGuid().ToString("N")[..12],
+            specialtyId = Guid.NewGuid(),
+            role = "tecnico",
+        }))
+        {
+        }
+
+        await using var connection = new NpgsqlConnection(env.AppConnectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await SetTenantAsync(connection, transaction, IdentityEnvironment.InactiveTenant);
+        await using var count = new NpgsqlCommand("SELECT count(*) FROM technician_profiles", connection, transaction);
+
+        Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
+    }
+
+    [Fact]
+    public async Task LoginsFallidosEnParalelo_SeCuentanSinPerderIntentos()
+    {
+        using var client = env.App.CreateClient();
+        var email = NewEmail();
+        using (await client.PostAsJsonAsync(Register, new { email, password = "Segura123", fullName = "Ana" }))
+        {
+        }
+
+        var intentos = Enumerable.Range(0, 10).Select(async _ =>
+        {
+            using var c = env.App.CreateClient();
+            using var r = await c.PostAsJsonAsync(Login, new { email, password = "incorrecta" });
+            return r.StatusCode;
+        });
+        var codigos = await Task.WhenAll(intentos);
+
+        Assert.Contains(HttpStatusCode.Locked, codigos);
+        Assert.NotNull(await env.ScalarAdminAsync("SELECT locked_until FROM users WHERE email = @e AND locked_until IS NOT NULL", ("e", email)));
     }
 
     [Fact]

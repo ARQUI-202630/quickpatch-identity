@@ -23,7 +23,9 @@ public class IdentityHandlerTests
         store.Tenants.Add(new Tenant(tenant, "Alfa", "900", Tenant.Active, Now));
     }
 
-    private RegisterClientHandler Register() => new(store, store, hasher, clock);
+    private RegisterClientHandler Register() => new(store, store, store, hasher, clock);
+
+    private RegisterTechnicianHandler RegisterTechnician() => new(store, store, store, store, hasher, clock);
 
     private LoginHandler Login() =>
         new(store, store, store, hasher, new FakeTokens(), LockoutPolicy.Default, clock, NullLogger<LoginHandler>.Instance);
@@ -61,6 +63,7 @@ public class IdentityHandlerTests
     {
         await RegisteredAsync();
         var otro = Guid.NewGuid();
+        store.Tenants.Add(new Tenant(otro, "Gamma", "902", Tenant.Active, Now));
 
         var result = await Register().HandleAsync(new RegisterClientCommand(otro, "ana@correo.co", "Segura123", "Ana", null), CancellationToken.None);
 
@@ -142,7 +145,7 @@ public class IdentityHandlerTests
     {
         var inactivo = Guid.NewGuid();
         store.Tenants.Add(new Tenant(inactivo, "Beta", "901", Tenant.Inactive, Now));
-        await Register().HandleAsync(new RegisterClientCommand(inactivo, "beto@correo.co", "Segura123", "Beto", null), CancellationToken.None);
+        store.Users.Add(User.Create(inactivo, "beto@correo.co", "hash:Segura123", Roles.Cliente, "Beto", null, Now));
 
         var conClave = await Login().HandleAsync(new LoginCommand(inactivo, "beto@correo.co", "Segura123"), CancellationToken.None);
         var sinClave = await Login().HandleAsync(new LoginCommand(inactivo, "beto@correo.co", "mala"), CancellationToken.None);
@@ -162,7 +165,7 @@ public class IdentityHandlerTests
     public async Task PerfilPropio_SoloEnSuTenant()
     {
         var user = await RegisteredAsync();
-        var handler = new GetCurrentUserHandler(store, store);
+        var handler = new GetCurrentUserHandler(store, store, store);
 
         Assert.NotNull(await handler.HandleAsync(tenant, user.Id, CancellationToken.None));
         Assert.Null(await handler.HandleAsync(Guid.NewGuid(), user.Id, CancellationToken.None));

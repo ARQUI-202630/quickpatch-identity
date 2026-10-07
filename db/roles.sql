@@ -16,8 +16,8 @@ GRANT USAGE ON SCHEMA public TO identity_app, identity_platform;
 
 -- Rol del servicio: todo bajo RLS. Sobre tenants solo lectura: ningún tenant puede modificarse a sí mismo.
 GRANT SELECT ON tenants TO identity_app;
-GRANT SELECT, INSERT, UPDATE ON users TO identity_app;
+GRANT SELECT, INSERT, UPDATE ON users, technician_profiles TO identity_app;
 
 -- Operaciones de plataforma (RF-21, DD 10.4): gestión de tenants. Pool propio de 2 conexiones.
 GRANT SELECT, INSERT, UPDATE ON tenants TO identity_platform;
-GRANT SELECT ON users TO identity_platform;
+GRANT SELECT ON users, technician_profiles TO identity_platform;

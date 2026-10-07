@@ -49,8 +49,11 @@ dotnet run --project src/QuickPatch.Identity.Api
 |Capacidad|Contrato|Historia|
 |---|---|---|
 |`POST /v1/auth/register/client`: registro de cliente (RF-01)|`openapi/identity.v1.yaml`|SCRUM-21 / SCRUM-63|
+|`POST /v1/auth/register/technician`: registro de técnico o proveedor con perfil `pendiente` (RF-02); documento único por tenant|`openapi/identity.v1.yaml` 1.1.0|SCRUM-22|
 |`POST /v1/auth/login`: login con bloqueo tras 5 fallos durante 15 min (RF-03, RN-U4) y rechazo de tenant inactivo (RN-T1)|`openapi/identity.v1.yaml`|SCRUM-23 / SCRUM-63|
-|`GET /v1/users/me`: perfil del usuario del token|`openapi/identity.v1.yaml`|SCRUM-63|
+|`GET /v1/users/me`: perfil del usuario del token; para técnicos y proveedores incluye `verificationStatus`|`openapi/identity.v1.yaml`|SCRUM-63|
+
+> El registro de técnicos, el `FOR UPDATE` del login, la validación de tenant activo en el registro y el entorno local con Docker vienen del trabajo de José Castiblanco (@joseval29). Quedan pendientes, hasta que el equipo apruebe el DD 3.1: registro de empresa (`client_companies`), evento `technician.registered` (P-01) y refresh tokens.
 
 ## Seguridad
 
@@ -59,6 +62,20 @@ dotnet run --project src/QuickPatch.Identity.Api
 - **Tenant del canal (RN-U5):** registro y login usan `Channel__TenantId`, nunca un campo del cuerpo. En el MVP opera un solo tenant (DD 10.3); sin él configurado, esos endpoints responden 503.
 - **RLS (DD 10.2):** `users` aislada por tenant; `tenants` visible solo para su propio tenant y de solo lectura para `identity_app`.
 - **RNF-04:** cada 403 de autorización queda en un log WARNING con ruta, usuario, rol y `correlationId`; los logs salen en JSON.
+
+## Desarrollo local
+
+Requiere Docker y el SDK de .NET de `global.json`.
+
+```bash
+docker compose up -d                       # PostgreSQL 16 con los roles de desarrollo
+bash desarrollo/preparar-base.sh           # migraciones, db/roles.sql y tenant de ejemplo
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out desarrollo/dev.pem   # llave local; *.pem no se versiona
+export Jwt__PrivateKeyPem="$(cat desarrollo/dev.pem)"
+ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/QuickPatch.Identity.Api
+```
+
+`appsettings.Development.json` apunta a esa base y al tenant de ejemplo; sus contraseñas son solo locales.
 
 ## Base de datos
 
