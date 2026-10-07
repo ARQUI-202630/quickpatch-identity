@@ -37,6 +37,9 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        # La imagen declara USER app (por nombre); Kubernetes necesita el UID para verificar que no es root.
+        runAsUser: 1654
+        runAsGroup: 1654
       initContainers:
         # Migraciones (EF Core bundle) con el rol identity_migrator, dueño de las tablas (DD 10.2).
         - name: migraciones
