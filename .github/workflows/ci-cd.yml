@@ -1,0 +1,224 @@
+# CI/CD de un servicio .NET de QUICKPATCH: identity, actors, catalog, service-request,
+# ranking, payments y communication.
+# El CI (SCRUM-337) y el CD (SCRUM-338) viven en este archivo, sin workflows de otros repositorios.
+# Qué corre en cada rama:
+#   PR a develop   → lint y pruebas unitarias
+#   push develop   → además, pruebas de integración
+#   push release/* → además, imagen en GHCR y despliegue en QA (VM2)
+#   push main      → la misma imagen de QA, desplegada en producción (VM3)
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, "release/**", main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # CI propio del repositorio (SCRUM-337): formato, compilación, pruebas y cobertura ≥ 80%.
+  # Las pruebas de integración (Testcontainers) corren en los push a develop y release/*.
+  ci:
+    name: Lint, pruebas y cobertura
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      INTEGRACION: ${{ github.event_name == 'push' && github.ref != 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restaurar dependencias
+        run: dotnet restore
+
+      - name: Formato (lint)
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar
+        run: dotnet build --no-restore -c Release
+
+      - name: Pruebas unitarias (tests/unit)
+        run: |
+          for p in $(find tests/unit -name '*.csproj'); do
+            dotnet test "$p" --no-build -c Release --collect:"XPlat Code Coverage" \
+              --logger trx --results-directory resultados
+          done
+
+      - name: Pruebas de integración (tests/integration, Testcontainers)
+        if: env.INTEGRACION == 'true'
+        run: |
+          for p in $(find tests/integration -name '*.csproj'); do
+            dotnet test "$p" --no-build -c Release --collect:"XPlat Code Coverage" \
+              --logger trx --results-directory resultados
+          done
+
+      - name: Cobertura mínima
+        run: python3 .github/scripts/cobertura.py cobertura 80 "resultados/**/coverage.cobertura.xml"
+
+      - name: Guardar resultados de las pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resultados-dotnet
+          path: resultados
+          if-no-files-found: ignore
+
+  # Imagen en GHCR (ADR-015). Etiqueta por contenido: t-<hash del árbol de archivos>. Un merge de release/* a main
+  # sin otros cambios tiene el mismo árbol que la rama release, así que producción despliega exactamente la imagen
+  # que se probó en QA, sin volver a construirla. Si main trae algo que no pasó por release/*, se construye y se avisa.
+  imagen:
+    name: Imagen en GHCR
+    needs: ci
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      imagen: ${{ steps.publicada.outputs.imagen }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Nombre y etiqueta
+        id: nombre
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"   # GHCR exige minúsculas
+          {
+            echo "imagen=ghcr.io/${repo}"
+            echo "etiqueta=t-$(git rev-parse --short=12 'HEAD^{tree}')"
+            echo "sha=sha-$(git rev-parse --short=12 HEAD)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ¿Ya existe una imagen con este contenido?
+        id: existe
+        env:
+          REF: ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.etiqueta }}
+        run: |
+          if docker manifest inspect "$REF" > /dev/null 2>&1; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$REF ya existe: se reutiliza sin construir."
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "::warning::Este contenido no pasó por QA: main tiene cambios que no venían de release/*. Se construye una imagen nueva."
+            fi
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.existe.outputs.existe == 'false'
+
+      - uses: docker/build-push-action@v6
+        if: steps.existe.outputs.existe == 'false'
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.etiqueta }}
+            ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.sha }}
+          # Enlaza el paquete con el repo: hereda su visibilidad y sus permisos.
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Imagen publicada
+        id: publicada
+        env:
+          REF: ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.etiqueta }}
+        run: echo "imagen=$REF" >> "$GITHUB_OUTPUT"
+
+  # Despliegue en k3s: release/* → QA (VM2), main → producción (VM3).
+  # Corre en el runner self-hosted de VM1, el único que llega a la red del laboratorio; usa los kubeconfig que deja
+  # deploy-runner.yml en ~quickpatch/.kube. SEGURIDAD: solo con `push` (lo garantiza `imagen`), nunca con
+  # `pull_request`: el repo es público y un PR desde un fork ejecutaría código ajeno dentro del laboratorio.
+  # El Deployment debe existir antes (deploy/k8s de este repo, aplicado por primer-despliegue-servicios.yml).
+  desplegar:
+    name: Despliegue en ${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}
+    needs: imagen
+    if: needs.imagen.outputs.imagen != ''
+    runs-on: [self-hosted, vm1, red-laboratorio]
+    timeout-minutes: 15
+    # En GitHub, el ambiente "produccion" puede exigir aprobación de un revisor antes de correr.
+    environment: ${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}
+    concurrency:
+      group: despliegue-${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      AMBIENTE: ${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}
+      IMAGEN: ${{ needs.imagen.outputs.imagen }}
+      NS: quickpatch
+    steps:
+      - name: Deployment y kubeconfig
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          echo "SVC=${repo#quickpatch-}" >> "$GITHUB_ENV"
+          echo "KUBECONFIG=$HOME/.kube/config-$AMBIENTE" >> "$GITHUB_ENV"
+
+      - name: Verificar que el Deployment existe
+        run: |
+          if ! kubectl get deployment "$SVC" -n "$NS" > /dev/null; then
+            echo "::error::No existe el Deployment '$SVC' en $AMBIENTE. Falta aplicar deploy/k8s de este repo (infrastructure/ansible, primer-despliegue-servicios.yml)."
+            exit 1
+          fi
+
+      - name: Actualizar la imagen
+        run: |
+          kubectl set image deployment/"$SVC" -n "$NS" "*=$IMAGEN"
+          kubectl annotate deployment/"$SVC" -n "$NS" --overwrite \
+            kubernetes.io/change-cause="$IMAGEN ($GITHUB_REPOSITORY@${GITHUB_SHA::12})"
+
+      - name: Esperar el rolling update
+        id: rollout
+        run: kubectl rollout status deployment/"$SVC" -n "$NS" --timeout=180s
+
+      - name: Revertir si el rolling update falló
+        if: failure() && steps.rollout.outcome == 'failure'
+        run: |
+          echo "::error::El rolling update de '$SVC' no terminó: se vuelve a la versión anterior."
+          kubectl rollout undo deployment/"$SVC" -n "$NS"
+          kubectl rollout status deployment/"$SVC" -n "$NS" --timeout=180s
+
+  dependency-review:
+    name: dependency-review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  quality-gate:
+    name: quality-gate
+    if: always()
+    needs: [ci, dependency-review]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validar compuertas
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          DEP_RESULT: ${{ needs.dependency-review.result }}
+        run: |
+          test "$CI_RESULT" = "success"
+          test "$DEP_RESULT" = "success" || test "$DEP_RESULT" = "skipped"

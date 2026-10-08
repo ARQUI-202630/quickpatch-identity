@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/TestResults/
+tests/
+contracts/
+.git/
+.github/
+.githooks/
+graphify-out/
+*.md

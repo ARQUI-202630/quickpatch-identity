@@ -1,0 +1,14 @@
+# Claude Code — identity
+
+Lee primero:
+
+- README.md
+- AGENTS.md
+- contracts/api-gateway/openapi/ (REST)
+- contracts/kafka/events/ (eventos)
+
+Stack obligatorio: ASP.NET Core / .NET 10.
+
+No inventar endpoints ni eventos.
+No modificar contratos silenciosamente.
+No asumir que existe el repositorio padre.
