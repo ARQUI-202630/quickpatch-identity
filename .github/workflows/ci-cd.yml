@@ -1,7 +1,7 @@
 # CI/CD de un servicio .NET de QUICKPATCH: identity, actors, catalog, service-request,
 # ranking, payments y communication.
-# El CI vive en este archivo (SCRUM-337). El despliegue (imagen, QA y producción) todavía usa
-# los workflows de quickpatch-infrastructure hasta que se traslade (SCRUM-338). Qué corre en cada rama:
+# El CI (SCRUM-337) y el CD (SCRUM-338) viven en este archivo, sin workflows de otros repositorios.
+# Qué corre en cada rama:
 #   PR a develop   → lint y pruebas unitarias
 #   push develop   → además, pruebas de integración
 #   push release/* → además, imagen en GHCR y despliegue en QA (VM2)
@@ -74,33 +74,139 @@ jobs:
           path: resultados
           if-no-files-found: ignore
 
+  # Imagen en GHCR (ADR-015). Etiqueta por contenido: t-<hash del árbol de archivos>. Un merge de release/* a main
+  # sin otros cambios tiene el mismo árbol que la rama release, así que producción despliega exactamente la imagen
+  # que se probó en QA, sin volver a construirla. Si main trae algo que no pasó por release/*, se construye y se avisa.
   imagen:
+    name: Imagen en GHCR
     needs: ci
     if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/release/') || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       packages: write
-    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/imagen.yml@main
+    outputs:
+      imagen: ${{ steps.publicada.outputs.imagen }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-  qa:
-    needs: imagen
-    if: startsWith(github.ref, 'refs/heads/release/') && needs.imagen.outputs.imagen != ''
-    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/deploy-k3s.yml@main
-    with:
-      ambiente: qa
-      imagen: ${{ needs.imagen.outputs.imagen }}
+      - name: Nombre y etiqueta
+        id: nombre
+        run: |
+          repo="${GITHUB_REPOSITORY,,}"   # GHCR exige minúsculas
+          {
+            echo "imagen=ghcr.io/${repo}"
+            echo "etiqueta=t-$(git rev-parse --short=12 'HEAD^{tree}')"
+            echo "sha=sha-$(git rev-parse --short=12 HEAD)"
+          } >> "$GITHUB_OUTPUT"
 
-  produccion:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ¿Ya existe una imagen con este contenido?
+        id: existe
+        env:
+          REF: ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.etiqueta }}
+        run: |
+          if docker manifest inspect "$REF" > /dev/null 2>&1; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$REF ya existe: se reutiliza sin construir."
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+            if [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "::warning::Este contenido no pasó por QA: main tiene cambios que no venían de release/*. Se construye una imagen nueva."
+            fi
+          fi
+
+      - uses: docker/setup-buildx-action@v3
+        if: steps.existe.outputs.existe == 'false'
+
+      - uses: docker/build-push-action@v6
+        if: steps.existe.outputs.existe == 'false'
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.etiqueta }}
+            ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.sha }}
+          # Enlaza el paquete con el repo: hereda su visibilidad y sus permisos.
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Imagen publicada
+        id: publicada
+        env:
+          REF: ${{ steps.nombre.outputs.imagen }}:${{ steps.nombre.outputs.etiqueta }}
+        run: echo "imagen=$REF" >> "$GITHUB_OUTPUT"
+
+  # Despliegue en k3s: release/* → QA (VM2), main → producción (VM3).
+  # Corre en el runner self-hosted de VM1, el único que llega a la red del laboratorio; usa los kubeconfig que deja
+  # deploy-runner.yml en ~quickpatch/.kube. SEGURIDAD: solo con `push` (lo garantiza `imagen`), nunca con
+  # `pull_request`: el repo es público y un PR desde un fork ejecutaría código ajeno dentro del laboratorio.
+  # El Deployment debe existir antes (deploy/k8s de este repo, aplicado por primer-despliegue-servicios.yml).
+  desplegar:
+    name: Despliegue en ${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}
     needs: imagen
-    if: github.ref == 'refs/heads/main' && needs.imagen.outputs.imagen != ''
-    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/deploy-k3s.yml@main
-    with:
-      ambiente: produccion
-      imagen: ${{ needs.imagen.outputs.imagen }}
+    if: needs.imagen.outputs.imagen != ''
+    runs-on: [self-hosted, vm1, red-laboratorio]
+    timeout-minutes: 15
+    # En GitHub, el ambiente "produccion" puede exigir aprobación de un revisor antes de correr.
+    environment: ${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}
+    concurrency:
+      group: despliegue-${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}-${{ github.repository }}
+      cancel-in-progress: false
+    env:
+      AMBIENTE: ${{ github.ref == 'refs/heads/main' && 'produccion' || 'qa' }}
+      IMAGEN: ${{ needs.imagen.outputs.imagen }}
+      NS: quickpatch
+    steps:
+      - name: Deployment y kubeconfig
+        run: |
+          repo="${GITHUB_REPOSITORY#*/}"
+          echo "SVC=${repo#quickpatch-}" >> "$GITHUB_ENV"
+          echo "KUBECONFIG=$HOME/.kube/config-$AMBIENTE" >> "$GITHUB_ENV"
+
+      - name: Verificar que el Deployment existe
+        run: |
+          if ! kubectl get deployment "$SVC" -n "$NS" > /dev/null; then
+            echo "::error::No existe el Deployment '$SVC' en $AMBIENTE. Falta aplicar deploy/k8s de este repo (infrastructure/ansible, primer-despliegue-servicios.yml)."
+            exit 1
+          fi
+
+      - name: Actualizar la imagen
+        run: |
+          kubectl set image deployment/"$SVC" -n "$NS" "*=$IMAGEN"
+          kubectl annotate deployment/"$SVC" -n "$NS" --overwrite \
+            kubernetes.io/change-cause="$IMAGEN ($GITHUB_REPOSITORY@${GITHUB_SHA::12})"
+
+      - name: Esperar el rolling update
+        id: rollout
+        run: kubectl rollout status deployment/"$SVC" -n "$NS" --timeout=180s
+
+      - name: Revertir si el rolling update falló
+        if: failure() && steps.rollout.outcome == 'failure'
+        run: |
+          echo "::error::El rolling update de '$SVC' no terminó: se vuelve a la versión anterior."
+          kubectl rollout undo deployment/"$SVC" -n "$NS"
+          kubectl rollout status deployment/"$SVC" -n "$NS" --timeout=180s
 
   dependency-review:
+    name: dependency-review
     if: github.event_name == 'pull_request'
-    uses: ARQUI-202630/quickpatch-infrastructure/.github/workflows/dependency-review.yml@main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
 
   quality-gate:
     name: quality-gate
