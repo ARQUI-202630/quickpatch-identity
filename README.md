@@ -105,7 +105,7 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/QuickPatch.Identity.
 
 ## Despliegue
 
-- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
+- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`, `/v1/platform`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
 - Secretos, primer despliegue y alta del tenant: `deploy/k8s/README.md`.
 - **Administradores iniciales:** si `Bootstrap__AdminEmail`/`Bootstrap__AdminPassword` o `Bootstrap__PlatformAdminEmail`/`Bootstrap__PlatformAdminPassword` están configurados (secreto), Identity crea al arrancar el `admin_tenant` o el `admin_plataforma` del tenant del canal cuando todavía no existen. Ningún endpoint registra administradores.
 - **Gestión de tenants (RF-21, contrato 1.2.0):** `GET /v1/platform/tenants` y `PATCH /v1/platform/tenants/{id}`, solo `admin_plataforma`. Corren en una transacción que adopta `identity_platform` (`SET LOCAL ROLE`, BYPASSRLS) y registran el cambio en `audit_logs` (DD 10.4). `identity_app` es miembro de ese rol sin heredarlo (`db/roles.sql`).
