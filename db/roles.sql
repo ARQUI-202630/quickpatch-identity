@@ -9,10 +9,13 @@ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'identity_platform') THEN
         CREATE ROLE identity_platform NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'identity_outbox') THEN
+        CREATE ROLE identity_outbox NOLOGIN BYPASSRLS;
+    END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO identity_app, identity_platform;
+GRANT USAGE ON SCHEMA public TO identity_app, identity_platform, identity_outbox;
 
 -- Rol del servicio: todo bajo RLS. Sobre tenants solo lectura: ningún tenant puede modificarse a sí mismo.
 GRANT SELECT ON tenants TO identity_app;
@@ -28,3 +31,9 @@ GRANT SELECT, INSERT, UPDATE ON tenants TO identity_platform;
 GRANT SELECT ON users, technician_profiles TO identity_platform;
 GRANT SELECT, INSERT ON audit_logs TO identity_platform;
 GRANT identity_platform TO identity_app WITH INHERIT FALSE, SET TRUE;
+
+-- Transactional Outbox (ADR-007, DD 5.15): el servicio inserta los eventos de su tenant (RLS); solo el publicador
+-- los lee y marca como publicados, con SET LOCAL ROLE identity_outbox dentro de su transacción.
+GRANT INSERT ON outbox_events TO identity_app;
+GRANT SELECT, UPDATE ON outbox_events TO identity_outbox;
+GRANT identity_outbox TO identity_app WITH INHERIT FALSE, SET TRUE;

@@ -34,6 +34,7 @@ public class DevelopmentUsersSeedTests
         services.AddSingleton<ITenantRepository>(store);
         services.AddSingleton<IUserRepository>(store);
         services.AddSingleton<ITechnicianProfileRepository>(store);
+        services.AddSingleton<IOutbox>(store);
         services.AddSingleton<IPasswordHasher>(new FakeHasher());
         services.AddSingleton<TimeProvider>(new MutableClock(Now));
         services.AddScoped<EnsureTenantAdminHandler>();
