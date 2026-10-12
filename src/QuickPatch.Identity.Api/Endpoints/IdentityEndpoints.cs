@@ -145,7 +145,7 @@ public static class IdentityEndpoints
         var result = await handler.HandleAsync(new LoginCommand(channel.Value.TenantId, body.Email, body.Password), cancellationToken);
         return result switch
         {
-            LoginResult.Succeeded ok => Results.Ok(new LoginResponse(ok.Token.AccessToken, "Bearer", ok.Token.ExpiresInSeconds, UserProfile.From(ok.User))),
+            LoginResult.Succeeded ok => Results.Ok(new LoginResponse(ok.Token.AccessToken, "Bearer", ok.Token.ExpiresInSeconds, UserProfile.From(ok.User, ok.Profile))),
             LoginResult.Locked locked => Locked(locked.Until, clock.GetUtcNow()),
             LoginResult.TenantDisabled => TenantDisabled(),
             _ => Results.Problem(

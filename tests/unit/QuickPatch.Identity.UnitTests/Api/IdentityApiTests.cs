@@ -246,6 +246,8 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         Assert.Equal("https://quickpatch.internal/problems/documento-registrado", (await Json(repetido)).GetProperty("type").GetString());
         Assert.Equal("pendiente", (await Json(me)).GetProperty("verificationStatus").GetString());
         Assert.Equal("tecnico", (await Json(me)).GetProperty("role").GetString());
+        // El login también trae el estado: la app muestra el aviso de verificación sin esperar a /users/me.
+        Assert.Equal("pendiente", (await Json(login)).GetProperty("user").GetProperty("verificationStatus").GetString());
     }
 
     [Fact]
