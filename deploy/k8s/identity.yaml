@@ -16,6 +16,9 @@ data:
   # Tenant del canal (MVP con un solo tenant, DD 10.3). Debe existir en la tabla tenants.
   Channel__TenantId: "00000000-0000-0000-0000-000000000001"
   Bootstrap__AdminFullName: Administrador QUICKPATCH
+  # Kafka (ADR-007): el playbook reemplaza <vm-mensajeria>. El publicador del Outbox lee con identity_outbox.
+  Kafka__BootstrapServers: "<vm-mensajeria>:9092"
+  Outbox__PublisherRole: "identity_outbox"
 ---
 apiVersion: apps/v1
 kind: Deployment

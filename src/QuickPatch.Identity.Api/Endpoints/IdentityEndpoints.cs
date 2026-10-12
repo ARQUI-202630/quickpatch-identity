@@ -89,6 +89,7 @@ public static class IdentityEndpoints
 
     private static async Task<IResult> RegisterTechnicianAsync(
         RegisterTechnicianRequest body,
+        HttpContext context,
         IOptions<ChannelOptions> channel,
         RegisterTechnicianHandler handler,
         CancellationToken cancellationToken)
@@ -102,7 +103,15 @@ public static class IdentityEndpoints
         {
             var result = await handler.HandleAsync(
                 new RegisterTechnicianCommand(
-                    channel.Value.TenantId, body.Email, body.Password, body.FullName, body.Phone, body.DocumentId, body.SpecialtyId, body.Role),
+                    channel.Value.TenantId,
+                    body.Email,
+                    body.Password,
+                    body.FullName,
+                    body.Phone,
+                    body.DocumentId,
+                    body.SpecialtyId,
+                    body.Role,
+                    CorrelationId.Get(context)),
                 cancellationToken);
 
             return result switch

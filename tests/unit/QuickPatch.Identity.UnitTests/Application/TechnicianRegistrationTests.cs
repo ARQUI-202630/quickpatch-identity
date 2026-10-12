@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Application.Users;
@@ -22,7 +24,7 @@ public class TechnicianRegistrationTests
         store.Tenants.Add(new Tenant(tenant, "Alfa", "900", Tenant.Active, Now));
     }
 
-    private RegisterTechnicianHandler Handler() => new(store, store, store, store, hasher, new MutableClock(Now));
+    private RegisterTechnicianHandler Handler() => new(store, store, store, store, store, hasher, new MutableClock(Now));
 
     private RegisterTechnicianCommand Command(string email = "carlos@correo.co", string document = "1020304050", string role = Roles.Tecnico, Guid? tenantId = null) =>
         new(tenantId ?? tenant, email, "Segura123", "Carlos Pérez", "3001234567", document, specialty, role);
@@ -42,6 +44,46 @@ public class TechnicianRegistrationTests
         Assert.Equal(ok.User.Id, ok.Profile.UserId);
         Assert.Null(ok.Profile.ProviderId);
         Assert.Single(store.Profiles);
+    }
+
+    [Fact]
+    public async Task Registrar_EncolaTechnicianRegisteredConElContrato()
+    {
+        var correlation = Guid.NewGuid();
+        var result = await Handler().HandleAsync(Command() with { CorrelationId = correlation }, CancellationToken.None);
+
+        var ok = Assert.IsType<RegisterTechnicianResult.Registered>(result);
+        var message = Assert.Single(store.Events);
+        Assert.Equal("technician.registered", message.EventType);
+        Assert.Equal(tenant, message.TenantId);
+        Assert.Equal(ok.User.Id, message.AggregateId);
+
+        using var json = JsonDocument.Parse(message.Payload);
+        var root = json.RootElement;
+        Assert.Equal(message.Id, root.GetProperty("eventId").GetGuid());
+        Assert.Equal("technician.registered", root.GetProperty("eventType").GetString());
+        Assert.Equal(1, root.GetProperty("eventVersion").GetInt32());
+        Assert.Equal(Now, root.GetProperty("occurredAt").GetDateTimeOffset());
+        Assert.Equal(correlation, root.GetProperty("correlationId").GetGuid());
+        Assert.Equal(tenant, root.GetProperty("tenantId").GetGuid());
+        Assert.Equal("identity-service", root.GetProperty("producer").GetString());
+
+        var data = root.GetProperty("data");
+        Assert.Equal(ok.User.Id, data.GetProperty("technicianId").GetGuid());
+        Assert.Equal(specialty, data.GetProperty("specialtyId").GetGuid());
+        Assert.Equal(JsonValueKind.Null, data.GetProperty("providerId").ValueKind);
+        Assert.Equal(VerificationStatus.Pendiente, data.GetProperty("verificationStatus").GetString());
+        Assert.Equal(ok.Profile.CreatedAt, data.GetProperty("updatedAt").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task Registrar_Rechazado_NoEncolaEventos()
+    {
+        await Handler().HandleAsync(Command(), CancellationToken.None);
+
+        await Handler().HandleAsync(Command(email: "otro@correo.co"), CancellationToken.None);
+
+        Assert.Single(store.Events);
     }
 
     [Fact]

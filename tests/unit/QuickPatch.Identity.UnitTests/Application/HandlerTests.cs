@@ -25,7 +25,7 @@ public class IdentityHandlerTests
 
     private RegisterClientHandler Register() => new(store, store, store, hasher, clock);
 
-    private RegisterTechnicianHandler RegisterTechnician() => new(store, store, store, store, hasher, clock);
+    private RegisterTechnicianHandler RegisterTechnician() => new(store, store, store, store, store, hasher, clock);
 
     private LoginHandler Login() =>
         new(store, store, store, store, hasher, new FakeTokens(), LockoutPolicy.Default, clock, NullLogger<LoginHandler>.Instance);

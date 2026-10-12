@@ -10,13 +10,18 @@ namespace QuickPatch.Identity.UnitTests.Support;
 
 /// <summary>Puertos en memoria. Emula RLS: solo se ven los datos del tenant de la transacción en curso.</summary>
 public sealed class InMemoryIdentityStore
-    : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog
+    : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog, IOutbox
 {
     private Guid? currentTenant;
 
     public List<Tenant> Tenants { get; } = [];
 
     public List<AuditEntry> Audit { get; } = [];
+
+    /// <summary>Eventos encolados en el Outbox.</summary>
+    public List<OutboxMessage> Events { get; } = [];
+
+    public void Enqueue(OutboxMessage message) => Events.Add(message);
 
     /// <summary>Cuántas transacciones de plataforma (identity_platform) se abrieron.</summary>
     public int PlatformTransactions { get; private set; }

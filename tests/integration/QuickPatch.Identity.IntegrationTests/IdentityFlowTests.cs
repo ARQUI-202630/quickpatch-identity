@@ -1,7 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+
+using Confluent.Kafka;
+using Confluent.Kafka.Admin;
 
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,13 +15,14 @@ using Npgsql;
 
 using QuickPatch.Identity.Infrastructure.Persistence;
 
+using Testcontainers.Kafka;
 using Testcontainers.PostgreSql;
 
 namespace QuickPatch.Identity.IntegrationTests;
 
 /// <summary>
-/// PostgreSQL 16 real con las migraciones, los roles del DD 10.2 y el servicio conectado como <c>identity_app</c>
-/// (sujeto a RLS). Hay un tenant activo (el del canal) y uno inactivo.
+/// PostgreSQL 16 y Kafka reales, con las migraciones, los roles del DD 10.2 y el servicio conectado como
+/// <c>identity_app</c> (sujeto a RLS). Hay un tenant activo (el del canal) y uno inactivo.
 /// </summary>
 public sealed class IdentityEnvironment : IAsyncLifetime
 {
@@ -25,6 +30,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
     public static readonly Guid InactiveTenant = Guid.Parse("00000000-0000-0000-0000-0000000000b2");
 
     private readonly PostgreSqlContainer postgres = new PostgreSqlBuilder("postgres:16-alpine").WithDatabase("db_identity").Build();
+    private readonly KafkaContainer kafka = new KafkaBuilder("confluentinc/cp-kafka:7.7.1").Build();
     private readonly string privateKey = RSA.Create(2048).ExportPkcs8PrivateKeyPem();
 
     public string AdminConnectionString => postgres.GetConnectionString();
@@ -35,6 +41,8 @@ public sealed class IdentityEnvironment : IAsyncLifetime
         Password = "app-pruebas",
     }.ConnectionString;
 
+    public string KafkaServers => kafka.GetBootstrapAddress();
+
     public WebApplicationFactory<Program> App { get; private set; } = null!;
 
     public WebApplicationFactory<Program> AppFor(Guid channelTenant) =>
@@ -42,7 +50,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        await postgres.StartAsync();
+        await Task.WhenAll(postgres.StartAsync(), kafka.StartAsync());
         var options = new DbContextOptionsBuilder<IdentityDbContext>().UseNpgsql(AdminConnectionString).Options;
         await using (var db = new IdentityDbContext(options))
         {
@@ -56,6 +64,10 @@ public sealed class IdentityEnvironment : IAsyncLifetime
               ('{ActiveTenant}', 'Alfa', '900000001-1', 'activo', now()),
               ('{InactiveTenant}', 'Beta', '900000002-2', 'inactivo', now());
             """);
+        using (var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = KafkaServers }).Build())
+        {
+            await admin.CreateTopicsAsync([new TopicSpecification { Name = "technician.registered", NumPartitions = 1, ReplicationFactor = 1 }]);
+        }
 
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -64,6 +76,9 @@ public sealed class IdentityEnvironment : IAsyncLifetime
             b.UseSetting("Passwords:WorkFactor", "4");
             b.UseSetting("Channel:TenantId", ActiveTenant.ToString());
             b.UseSetting("DevelopmentUsers:Enabled", "false");
+            b.UseSetting("Kafka:BootstrapServers", KafkaServers);
+            b.UseSetting("Outbox:PublisherRole", "identity_outbox");
+            b.UseSetting("Outbox:PollInterval", "00:00:00.200");
         });
         _ = App.Server;
     }
@@ -75,7 +90,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
             await App.DisposeAsync();
         }
 
-        await postgres.DisposeAsync();
+        await Task.WhenAll(postgres.DisposeAsync().AsTask(), kafka.DisposeAsync().AsTask());
     }
 
     public async Task ExecuteAdminAsync(string sql)
@@ -97,6 +112,37 @@ public sealed class IdentityEnvironment : IAsyncLifetime
         }
 
         return await command.ExecuteScalarAsync();
+    }
+
+    /// <summary>Lee de Kafka hasta encontrar el mensaje con la clave dada; null si no llega en 30 s.</summary>
+    public (JsonElement Value, Headers Headers)? Consume(string topic, string key)
+    {
+        using var consumer = new ConsumerBuilder<string, string>(new ConsumerConfig
+        {
+            BootstrapServers = KafkaServers,
+            GroupId = $"pruebas-{Guid.NewGuid()}",
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+        }).Build();
+        consumer.Subscribe(topic);
+        try
+        {
+            var limit = DateTime.UtcNow.AddSeconds(30);
+            while (DateTime.UtcNow < limit)
+            {
+                var result = consumer.Consume(TimeSpan.FromSeconds(1));
+                if (result?.Message.Key == key)
+                {
+                    using var doc = JsonDocument.Parse(result.Message.Value);
+                    return (doc.RootElement.Clone(), result.Message.Headers);
+                }
+            }
+
+            return null;
+        }
+        finally
+        {
+            consumer.Close();
+        }
     }
 }
 
@@ -214,6 +260,68 @@ public class IdentityFlowTests(IdentityEnvironment env)
         Assert.Equal("pendiente", (string)(await env.ScalarAdminAsync("SELECT verification_status FROM technician_profiles WHERE user_id = @u", ("u", id)))!);
         Assert.Equal(especialidad, (Guid)(await env.ScalarAdminAsync("SELECT specialty_id FROM technician_profiles WHERE user_id = @u", ("u", id)))!);
         Assert.Equal(documento, (string)(await env.ScalarAdminAsync("SELECT document_id FROM users WHERE id = @u", ("u", id)))!);
+    }
+
+    [Fact]
+    public async Task RegistroDeTecnico_PublicaTechnicianRegisteredEnKafka()
+    {
+        using var client = env.App.CreateClient();
+        var correlation = Guid.NewGuid();
+        var especialidad = Guid.NewGuid();
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri("/v1/auth/register/technician", UriKind.Relative))
+        {
+            Content = JsonContent.Create(new
+            {
+                email = NewEmail(),
+                password = "Segura123",
+                fullName = "Carlos Pérez",
+                phone = "3001234567",
+                documentId = Guid.NewGuid().ToString("N")[..12],
+                specialtyId = especialidad,
+                role = "tecnico",
+            }),
+        };
+        request.Headers.Add("X-Correlation-Id", correlation.ToString());
+
+        using var creado = await client.SendAsync(request);
+        var id = (await creado.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        var mensaje = env.Consume("technician.registered", id.ToString());
+
+        Assert.Equal(HttpStatusCode.Created, creado.StatusCode);
+        Assert.NotNull(mensaje);
+        var (evento, headers) = mensaje.Value;
+        var data = evento.GetProperty("data");
+        Assert.Equal("technician.registered", evento.GetProperty("eventType").GetString());
+        Assert.Equal(correlation, evento.GetProperty("correlationId").GetGuid());
+        Assert.Equal(IdentityEnvironment.ActiveTenant, evento.GetProperty("tenantId").GetGuid());
+        Assert.Equal("identity-service", evento.GetProperty("producer").GetString());
+        Assert.Equal(id, data.GetProperty("technicianId").GetGuid());
+        Assert.Equal(especialidad, data.GetProperty("specialtyId").GetGuid());
+        Assert.Equal("pendiente", data.GetProperty("verificationStatus").GetString());
+        Assert.Equal(evento.GetProperty("eventId").GetString(), Encoding.UTF8.GetString(headers.GetLastBytes("eventId")));
+
+        // Outbox (ADR-007): la fila queda con el tenant del canal y el publicador la marca como publicada.
+        var eventId = evento.GetProperty("eventId").GetGuid();
+        Assert.Equal(IdentityEnvironment.ActiveTenant, (Guid)(await env.ScalarAdminAsync("SELECT tenant_id FROM outbox_events WHERE id = @e", ("e", eventId)))!);
+        var limite = DateTime.UtcNow.AddSeconds(10);
+        while (await env.ScalarAdminAsync("SELECT published_at FROM outbox_events WHERE id = @e", ("e", eventId)) is DBNull && DateTime.UtcNow < limite)
+        {
+            await Task.Delay(100);
+        }
+
+        Assert.IsNotType<DBNull>(await env.ScalarAdminAsync("SELECT published_at FROM outbox_events WHERE id = @e", ("e", eventId)));
+    }
+
+    [Fact]
+    public async Task Outbox_ElRolDelServicioNoPuedeLeerLosEventos()
+    {
+        await using var connection = new NpgsqlConnection(env.AppConnectionString);
+        await connection.OpenAsync();
+        await using var select = new NpgsqlCommand("SELECT count(*) FROM outbox_events", connection);
+
+        var error = await Assert.ThrowsAsync<PostgresException>(() => select.ExecuteScalarAsync());
+
+        Assert.Equal(PostgresErrorCodes.InsufficientPrivilege, error.SqlState);
     }
 
     [Fact]

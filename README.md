@@ -53,7 +53,15 @@ dotnet run --project src/QuickPatch.Identity.Api
 |`POST /v1/auth/login`: login con bloqueo tras 5 fallos durante 15 min (RF-03, RN-U4) y rechazo de tenant inactivo (RN-T1)|`openapi/identity.v1.yaml`|SCRUM-23 / SCRUM-63|
 |`GET /v1/users/me`: perfil del usuario del token; para técnicos y proveedores incluye `verificationStatus`|`openapi/identity.v1.yaml`|SCRUM-63|
 
-> El registro de técnicos, el `FOR UPDATE` del login, la validación de tenant activo en el registro y el entorno local con Docker vienen del trabajo de José Castiblanco (@joseval29). Quedan pendientes, hasta que el equipo apruebe el DD 3.1: registro de empresa (`client_companies`), evento `technician.registered` (P-01) y refresh tokens.
+> El registro de técnicos, el `FOR UPDATE` del login, la validación de tenant activo en el registro y el entorno local con Docker vienen del trabajo de José Castiblanco (@joseval29). Quedan pendientes: registro de empresa (`client_companies`) y refresh tokens.
+
+## Eventos
+
+|Evento|Cuándo|Contrato|Historia|
+|---|---|---|---|
+|`technician.registered` v1 (clave: `technicianId`)|Un técnico o proveedor se registra y queda `pendiente`. Lleva la especialidad, el proveedor y el estado, con `updatedAt` como versión (ADR-017); Matching arma con él su proyección del técnico (P-01).|`contracts/kafka/events/technician.registered.v1.json` (v0.3.0)|SCRUM-22 / SCRUM-54|
+
+Se publican con **Transactional Outbox** (ADR-007): el evento se guarda en `outbox_events` en la misma transacción del registro y un `BackgroundService` lo envía a Kafka (topic = tipo del evento, cabeceras `eventId` y `eventType`) y marca `published_at`. Si Kafka falla, suma un intento y lo reintenta en la siguiente vuelta. El servicio solo **inserta** en `outbox_events` con el tenant de su sesión (RLS); el publicador lee los de todos los tenants adoptando `identity_outbox` (`SET LOCAL ROLE`, BYPASSRLS). Sin `Kafka__BootstrapServers` (desarrollo local) los eventos se quedan en la tabla sin publicar.
 
 ## Seguridad
 
@@ -94,7 +102,7 @@ Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del p
 ## Base de datos
 
 1. Migraciones: `dotnet tool restore` y `dotnet ef database update --project src/QuickPatch.Identity.Infrastructure --connection "<cadena>"`.
-2. Roles y permisos: `db/roles.sql` (`identity_app` y `identity_platform`), después de las migraciones.
+2. Roles y permisos: `db/roles.sql` (`identity_app`, `identity_platform` e `identity_outbox`), después de las migraciones.
 3. Alta del tenant del MVP: ejemplo en `db/seed-tenant.example.sql`.
 
 ## Configuración
@@ -105,11 +113,13 @@ Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del p
 |`Jwt__PrivateKeyPem`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__Lifetime`|Emisión del token|
 |`Channel__TenantId`|Tenant del canal (RN-U5)|
 |`Passwords__WorkFactor`|Costo de BCrypt|
+|`Kafka__BootstrapServers`|Kafka (VM6 en producción, VM7 en QA); vacío, no se publica|
+|`Outbox__PublisherRole`, `Outbox__BatchSize`, `Outbox__PollInterval`|Publicador del Outbox (`identity_outbox`, 50 eventos, 1 s)|
 
 ## Pruebas
 
 - `tests/unit`: dominio, casos de uso y API completa con puertos en memoria y el emisor RS256 real.
-- `tests/integration`: PostgreSQL 16 real con Testcontainers: migraciones, roles, BCrypt, bloqueo, tenant inactivo y RLS.
+- `tests/integration`: PostgreSQL 16 y Kafka reales con Testcontainers: migraciones, roles, BCrypt, bloqueo, tenant inactivo, RLS y publicación de `technician.registered` por el Outbox.
 
 ## Contenedor
 
