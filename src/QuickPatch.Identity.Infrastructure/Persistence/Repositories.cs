@@ -87,6 +87,45 @@ public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnic
     public Task<TechnicianProfile?> FindAsync(Guid userId, CancellationToken cancellationToken) =>
         db.TechnicianProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.UserId == userId, cancellationToken);
 
+    public async Task<TechnicianProfile?> FindForUpdateAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var rows = await db.TechnicianProfiles
+            .FromSql($"SELECT * FROM technician_profiles WHERE user_id = {userId} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
+    public async Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken)
+    {
+        var profiles = db.TechnicianProfiles.AsNoTracking();
+        if (verificationStatus is not null)
+        {
+            profiles = profiles.Where(x => x.VerificationStatus == verificationStatus);
+        }
+
+        var query = profiles.Join(db.Users.AsNoTracking(), p => p.UserId, u => u.Id, (p, u) => new { Profile = p, User = u });
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(x => x.Profile.CreatedAt)
+            .ThenBy(x => x.Profile.UserId)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(x => new AdminTechnicianView(
+                x.User.Id,
+                x.User.FullName,
+                x.User.Email,
+                x.User.Phone,
+                x.User.Role,
+                x.User.DocumentId!,
+                x.Profile.SpecialtyId,
+                x.Profile.VerificationStatus,
+                x.Profile.VerificationReason,
+                x.Profile.CreatedAt))
+            .ToListAsync(cancellationToken);
+        return new TechnicianPage(items, page, size, total);
+    }
+
     public void Add(TechnicianProfile profile) => db.TechnicianProfiles.Add(profile);
 }
 /// <summary>

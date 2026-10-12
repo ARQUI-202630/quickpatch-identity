@@ -66,7 +66,10 @@ public sealed class IdentityEnvironment : IAsyncLifetime
             """);
         using (var admin = new AdminClientBuilder(new AdminClientConfig { BootstrapServers = KafkaServers }).Build())
         {
-            await admin.CreateTopicsAsync([new TopicSpecification { Name = "technician.registered", NumPartitions = 1, ReplicationFactor = 1 }]);
+            await admin.CreateTopicsAsync([
+                new TopicSpecification { Name = "technician.registered", NumPartitions = 1, ReplicationFactor = 1 },
+                new TopicSpecification { Name = "technician.verification-changed", NumPartitions = 1, ReplicationFactor = 1 },
+            ]);
         }
 
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
@@ -112,6 +115,32 @@ public sealed class IdentityEnvironment : IAsyncLifetime
         }
 
         return await command.ExecuteScalarAsync();
+    }
+
+    /// <summary>Lee de Kafka, en orden, hasta <paramref name="count"/> mensajes con la clave dada (máximo 30 s).</summary>
+    public List<JsonElement> ConsumeAll(string topic, string key, int count)
+    {
+        using var consumer = new ConsumerBuilder<string, string>(new ConsumerConfig
+        {
+            BootstrapServers = KafkaServers,
+            GroupId = $"pruebas-{Guid.NewGuid()}",
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+        }).Build();
+        consumer.Subscribe(topic);
+        var found = new List<JsonElement>();
+        var limit = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < limit && found.Count < count)
+        {
+            var result = consumer.Consume(TimeSpan.FromSeconds(1));
+            if (result?.Message.Key == key)
+            {
+                using var doc = JsonDocument.Parse(result.Message.Value);
+                found.Add(doc.RootElement.Clone());
+            }
+        }
+
+        consumer.Close();
+        return found;
     }
 
     /// <summary>Lee de Kafka hasta encontrar el mensaje con la clave dada; null si no llega en 30 s.</summary>
