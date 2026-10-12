@@ -47,6 +47,16 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
             ALTER TABLE outbox_events ENABLE ROW LEVEL SECURITY;
             ALTER TABLE outbox_events FORCE ROW LEVEL SECURITY;
             CREATE POLICY outbox_insert ON outbox_events FOR INSERT WITH CHECK (tenant_id = {CurrentTenant});
+
+            -- El registro de técnicos escribe en esta tabla desde este despliegue; sin el permiso fallaría hasta que se
+            -- vuelva a aplicar db/roles.sql. El dueño de la tabla (el migrador) concede el INSERT si el rol ya existe.
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'identity_app') THEN
+                    GRANT INSERT ON outbox_events TO identity_app;
+                END IF;
+            END
+            $$;
             """;
 
         /// <inheritdoc />
