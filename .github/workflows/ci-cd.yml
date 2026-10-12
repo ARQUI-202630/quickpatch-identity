@@ -180,6 +180,17 @@ jobs:
             exit 1
           fi
 
+      # RNF-08 (SCRUM-415): producción solo recibe la versión que corre en QA y que pasó las pruebas de sistema
+      # después de llegar a QA. El script lo instala deploy-runner.yml en VM1 (infrastructure/CI-CD.md).
+      - name: Compuerta RNF-08
+        if: env.AMBIENTE == 'produccion'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMPUERTA_EXCEPCION: ${{ vars.COMPUERTA_RNF08_EXCEPCION }}
+        run: |
+          command -v compuerta-qa > /dev/null || { echo "::error::Falta compuerta-qa en el runner: aplicar deploy-runner.yml en VM1."; exit 1; }
+          compuerta-qa servicio "$SVC" "$IMAGEN"
+
       - name: Actualizar la imagen
         run: |
           kubectl set image deployment/"$SVC" -n "$NS" "*=$IMAGEN"
