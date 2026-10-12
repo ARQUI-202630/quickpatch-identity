@@ -30,6 +30,13 @@ builder.Services.AddQuickPatchAuthentication(builder.Configuration);
 builder.Services.Configure<BootstrapOptions>(builder.Configuration.GetSection(BootstrapOptions.Section));
 builder.Services.AddHostedService<TenantAdminBootstrap>();
 
+// Usuarios de prueba por rol, solo en desarrollo local (SCRUM-450): exige el entorno Development y la bandera de
+// appsettings.Development.json. En QA y producción no se registra.
+if (builder.Environment.IsDevelopment() && builder.Configuration.GetValue<bool>("DevelopmentUsers:Enabled"))
+{
+    builder.Services.AddHostedService<DevelopmentUsersSeed>();
+}
+
 var app = builder.Build();
 
 app.UseCorrelationId();
