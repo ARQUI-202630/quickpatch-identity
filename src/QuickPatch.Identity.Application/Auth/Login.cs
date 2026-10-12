@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 
 using QuickPatch.Identity.Application.Abstractions;
+using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Users;
 
 namespace QuickPatch.Identity.Application.Auth;
@@ -10,7 +11,8 @@ public sealed record LoginCommand(Guid TenantId, string? Email, string? Password
 
 public abstract record LoginResult
 {
-    public sealed record Succeeded(IssuedToken Token, User User) : LoginResult;
+    /// <summary><see cref="Profile"/> solo para técnicos y proveedores: la app muestra su estado de verificación.</summary>
+    public sealed record Succeeded(IssuedToken Token, User User, TechnicianProfile? Profile = null) : LoginResult;
 
     /// <summary>Correo inexistente o contraseña incorrecta: misma respuesta para no revelar qué correos existen.</summary>
     public sealed record InvalidCredentials : LoginResult;
@@ -26,6 +28,7 @@ public sealed partial class LoginHandler(
     ITenantUnitOfWork unitOfWork,
     ITenantRepository tenants,
     IUserRepository users,
+    ITechnicianProfileRepository profiles,
     IPasswordHasher hasher,
     ITokenIssuer tokens,
     LockoutPolicy lockout,
@@ -77,7 +80,10 @@ public sealed partial class LoginHandler(
                 }
 
                 user.RegisterSuccessfulLogin();
-                return new LoginResult.Succeeded(tokens.Issue(user), user);
+
+                // Igual que GET /v1/users/me: el técnico y el proveedor reciben su estado de verificación (RF-02).
+                var profile = user.Role is Roles.Tecnico or Roles.Proveedor ? await profiles.FindAsync(user.Id, ct) : null;
+                return new LoginResult.Succeeded(tokens.Issue(user), user, profile);
             },
             cancellationToken);
     }

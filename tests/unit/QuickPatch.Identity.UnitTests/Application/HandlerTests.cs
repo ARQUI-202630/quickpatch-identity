@@ -28,7 +28,7 @@ public class IdentityHandlerTests
     private RegisterTechnicianHandler RegisterTechnician() => new(store, store, store, store, hasher, clock);
 
     private LoginHandler Login() =>
-        new(store, store, store, hasher, new FakeTokens(), LockoutPolicy.Default, clock, NullLogger<LoginHandler>.Instance);
+        new(store, store, store, store, hasher, new FakeTokens(), LockoutPolicy.Default, clock, NullLogger<LoginHandler>.Instance);
 
     private async Task<User> RegisteredAsync(string email = "ana@correo.co")
     {
@@ -99,6 +99,7 @@ public class IdentityHandlerTests
         var ok = Assert.IsType<LoginResult.Succeeded>(result);
         Assert.Equal($"token-{user.Id}", ok.Token.AccessToken);
         Assert.Equal(0, user.FailedLoginAttempts);
+        Assert.Null(ok.Profile); // un cliente no tiene perfil de técnico
     }
 
     [Fact]
