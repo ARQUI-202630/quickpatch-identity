@@ -63,6 +63,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
             b.UseSetting("Jwt:PrivateKeyPem", privateKey);
             b.UseSetting("Passwords:WorkFactor", "4");
             b.UseSetting("Channel:TenantId", ActiveTenant.ToString());
+            b.UseSetting("DevelopmentUsers:Enabled", "false");
         });
         _ = App.Server;
     }

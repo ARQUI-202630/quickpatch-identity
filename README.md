@@ -77,6 +77,20 @@ ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/QuickPatch.Identity.
 
 `appsettings.Development.json` apunta a esa base y al tenant de ejemplo; sus contraseñas son solo locales.
 
+### Usuarios de prueba (SCRUM-450)
+
+Con `ASPNETCORE_ENVIRONMENT=Development`, Identity crea al arrancar (si no existen) un usuario por rol en el tenant del canal, con los mismos casos de uso del registro (hash BCrypt y RLS). Se activa con `DevelopmentUsers:Enabled` de `appsettings.Development.json`; en QA y producción el entorno no es `Development` y el sembrado ni se registra. La contraseña es pública a propósito: **no la uses fuera de una base local**.
+
+|Correo|Rol|Notas|
+|---|---|---|
+|`cliente@quickpatch.dev`|`cliente`|App móvil|
+|`tecnico@quickpatch.dev`|`tecnico`|App móvil; perfil `pendiente`, documento `DEV-0001`|
+|`proveedor@quickpatch.dev`|`proveedor`|App móvil; perfil `pendiente`, documento `DEV-0002`|
+|`admin@quickpatch.dev`|`admin_tenant`|Panel web|
+|`plataforma@quickpatch.dev`|`admin_plataforma`|Panel web (gestión de tenants)|
+
+Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del proveedor es un identificador fijo de desarrollo (`00000000-0000-0000-0000-0000000000d1`), porque las categorías viven en la base de Catalog.
+
 ## Base de datos
 
 1. Migraciones: `dotnet tool restore` y `dotnet ef database update --project src/QuickPatch.Identity.Infrastructure --connection "<cadena>"`.

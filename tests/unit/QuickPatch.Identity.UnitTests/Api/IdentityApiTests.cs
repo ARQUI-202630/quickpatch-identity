@@ -43,6 +43,7 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:PrivateKeyPem", TestKeys.PrivateKeyPem);
         builder.UseSetting("Channel:TenantId", ActiveTenant.ToString());
         builder.UseSetting("ConnectionStrings:Identity", "Host=sin-base-en-pruebas-unitarias");
+        builder.UseSetting("DevelopmentUsers:Enabled", "false");
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<ITenantUnitOfWork>(Store);
