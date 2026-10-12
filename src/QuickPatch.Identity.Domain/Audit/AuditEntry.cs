@@ -8,6 +8,9 @@ public sealed class AuditEntry
 {
     public const string ActivateTenant = "activar_tenant";
     public const string DeactivateTenant = "desactivar_tenant";
+    public const string ApproveTechnician = "aprobar_tecnico";
+    public const string RejectTechnician = "rechazar_tecnico";
+    public const string SuspendTechnician = "suspender_tecnico";
 
     public AuditEntry(Guid id, Guid? tenantId, Guid? actorUserId, string action, Guid? targetId, string? metadata, DateTimeOffset createdAt)
     {

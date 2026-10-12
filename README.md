@@ -52,6 +52,8 @@ dotnet run --project src/QuickPatch.Identity.Api
 |`POST /v1/auth/register/technician`: registro de técnico o proveedor con perfil `pendiente` (RF-02); documento único por tenant|`openapi/identity.v1.yaml` 1.1.0|SCRUM-22|
 |`POST /v1/auth/login`: login con bloqueo tras 5 fallos durante 15 min (RF-03, RN-U4) y rechazo de tenant inactivo (RN-T1)|`openapi/identity.v1.yaml`|SCRUM-23 / SCRUM-63|
 |`GET /v1/users/me`: perfil del usuario del token; para técnicos y proveedores incluye `verificationStatus`|`openapi/identity.v1.yaml`|SCRUM-63|
+|`GET /v1/admin/technicians`: técnicos y proveedores del tenant, paginados y filtrables por `verificationStatus` (RF-19); solo `admin_tenant`|`openapi/identity.v1.yaml` 1.3.0|SCRUM-39 / SCRUM-106|
+|`POST /v1/admin/technicians/{userId}/approve`, `reject` y `suspend`: transiciones del DD 8.3.13 (409 `transicion-invalida` si no aplica), motivo de 5 a 500 caracteres al rechazar o suspender, auditoría y evento (RF-19, RF-20)|`openapi/identity.v1.yaml` 1.3.0|SCRUM-39, SCRUM-40 / SCRUM-106, SCRUM-109|
 
 > El registro de técnicos, el `FOR UPDATE` del login, la validación de tenant activo en el registro y el entorno local con Docker vienen del trabajo de José Castiblanco (@joseval29). Quedan pendientes: registro de empresa (`client_companies`) y refresh tokens.
 
@@ -59,6 +61,7 @@ dotnet run --project src/QuickPatch.Identity.Api
 
 |Evento|Cuándo|Contrato|Historia|
 |---|---|---|---|
+|`technician.verification-changed` v1 (clave: `technicianId`)|El admin del tenant aprueba, rechaza o suspende al técnico. Lleva el estado anterior y el nuevo, el motivo y `updatedAt` = momento del cambio (ADR-017); Matching actualiza su copia del estado.|`contracts/kafka/events/technician.verification-changed.v1.json` (v0.3.0)|SCRUM-39, SCRUM-40 / SCRUM-106, SCRUM-109|
 |`technician.registered` v1 (clave: `technicianId`)|Un técnico o proveedor se registra y queda `pendiente`. Lleva la especialidad, el proveedor y el estado, con `updatedAt` como versión (ADR-017); Matching arma con él su proyección del técnico (P-01).|`contracts/kafka/events/technician.registered.v1.json` (v0.3.0)|SCRUM-22 / SCRUM-54|
 
 Se publican con **Transactional Outbox** (ADR-007): el evento se guarda en `outbox_events` en la misma transacción del registro y un `BackgroundService` lo envía a Kafka (topic = tipo del evento, cabeceras `eventId` y `eventType`) y marca `published_at`. Si Kafka falla, suma un intento y lo reintenta en la siguiente vuelta. El servicio solo **inserta** en `outbox_events` con el tenant de su sesión (RLS); el publicador lee los de todos los tenants adoptando `identity_outbox` (`SET LOCAL ROLE`, BYPASSRLS). Sin `Kafka__BootstrapServers` (desarrollo local) los eventos se quedan en la tabla sin publicar.
@@ -129,7 +132,7 @@ Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del p
 
 ## Despliegue
 
-- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`, `/v1/platform`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
+- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`, `/v1/platform`, `/v1/admin/technicians`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
 - Secretos, primer despliegue y alta del tenant: `deploy/k8s/README.md`.
 - **Administradores iniciales:** si `Bootstrap__AdminEmail`/`Bootstrap__AdminPassword` o `Bootstrap__PlatformAdminEmail`/`Bootstrap__PlatformAdminPassword` están configurados (secreto), Identity crea al arrancar el `admin_tenant` o el `admin_plataforma` del tenant del canal cuando todavía no existen. Ningún endpoint registra administradores.
 - **Gestión de tenants (RF-21, contrato 1.2.0):** `GET /v1/platform/tenants` y `PATCH /v1/platform/tenants/{id}`, solo `admin_plataforma`. Corren en una transacción que adopta `identity_platform` (`SET LOCAL ROLE`, BYPASSRLS) y registran el cambio en `audit_logs` (DD 10.4). `identity_app` es miembro de ese rol sin heredarlo (`db/roles.sql`).

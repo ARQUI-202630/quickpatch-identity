@@ -64,8 +64,29 @@ public interface ITechnicianProfileRepository
 {
     Task<TechnicianProfile?> FindAsync(Guid userId, CancellationToken cancellationToken);
 
+    /// <summary>Busca el perfil y bloquea la fila (<c>FOR UPDATE</c>) para cambiar su verificación sin carreras.</summary>
+    Task<TechnicianProfile?> FindForUpdateAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>Técnicos y proveedores del tenant de la sesión (RLS), del más antiguo al más reciente.</summary>
+    Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken);
+
     void Add(TechnicianProfile profile);
 }
+
+/// <summary>Técnico o proveedor tal como lo ve el administrador del tenant (esquema <c>AdminTechnician</c>).</summary>
+public sealed record AdminTechnicianView(
+    Guid UserId,
+    string FullName,
+    string Email,
+    string? Phone,
+    string Role,
+    string DocumentId,
+    Guid SpecialtyId,
+    string VerificationStatus,
+    string? VerificationReason,
+    DateTimeOffset CreatedAt);
+
+public sealed record TechnicianPage(IReadOnlyList<AdminTechnicianView> Items, int Page, int Size, int TotalItems);
 
 /// <summary>Hash de contraseñas (RN-U2, RNF-03).</summary>
 public interface IPasswordHasher

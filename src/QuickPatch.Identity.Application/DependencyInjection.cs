@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Application.Platform;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Users;
 
@@ -20,6 +21,8 @@ public static class DependencyInjection
         services.AddSingleton(LockoutPolicy.Default);
         services.AddScoped<RegisterClientHandler>();
         services.AddScoped<RegisterTechnicianHandler>();
+        services.AddScoped<ListTechniciansHandler>();
+        services.AddScoped<ChangeVerificationHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();

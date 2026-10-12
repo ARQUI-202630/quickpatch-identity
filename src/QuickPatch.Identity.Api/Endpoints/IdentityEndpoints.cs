@@ -6,6 +6,7 @@ using QuickPatch.Identity.Api.Http;
 using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Application.Platform;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Technicians;
@@ -39,6 +40,12 @@ public sealed record TenantResponse(Guid Id, string Name, string Nit, string Sta
 
 public sealed record UpdateTenantStatusRequest(string? Status);
 
+/// <summary>Esquema <c>VerificationReasonRequest</c> del contrato 1.3.0.</summary>
+public sealed record VerificationReasonRequest(string? Reason);
+
+/// <summary>Esquema <c>TechnicianVerification</c> del contrato 1.3.0.</summary>
+public sealed record TechnicianVerificationResponse(Guid UserId, string VerificationStatus, string? Reason);
+
 /// <summary>Endpoints del contrato <c>identity.v1.yaml</c>.</summary>
 public static class IdentityEndpoints
 {
@@ -54,6 +61,16 @@ public static class IdentityEndpoints
             .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
         app.MapPatch("/v1/platform/tenants/{id:guid}", UpdateTenantStatusAsync).WithName("updateTenantStatus")
             .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
+
+        // Verificación de técnicos (RF-19, RF-20, DD 8.3.13): solo el admin_tenant y sobre su tenant (RLS).
+        var admin = app.MapGroup("/v1/admin/technicians").RequireAuthorization(policy => policy.RequireRole(Roles.AdminTenant));
+        admin.MapGet(string.Empty, ListTechniciansAsync).WithName("listTechnicians");
+        admin.MapPost("/{userId:guid}/approve", (Guid userId, HttpContext context, ChangeVerificationHandler handler, CancellationToken ct) =>
+            ChangeVerificationAsync(userId, VerificationAction.Approve, null, context, handler, ct)).WithName("approveTechnician");
+        admin.MapPost("/{userId:guid}/reject", (Guid userId, VerificationReasonRequest body, HttpContext context, ChangeVerificationHandler handler, CancellationToken ct) =>
+            ChangeVerificationAsync(userId, VerificationAction.Reject, body.Reason, context, handler, ct)).WithName("rejectTechnician");
+        admin.MapPost("/{userId:guid}/suspend", (Guid userId, VerificationReasonRequest body, HttpContext context, ChangeVerificationHandler handler, CancellationToken ct) =>
+            ChangeVerificationAsync(userId, VerificationAction.Suspend, body.Reason, context, handler, ct)).WithName("suspendTechnician");
         return app;
     }
 
@@ -206,6 +223,67 @@ public static class IdentityEndpoints
                     statusCode: StatusCodes.Status409Conflict,
                     type: Problems.PlatformTenant,
                     title: "No se puede desactivar el tenant de la plataforma"),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> ListTechniciansAsync(
+        HttpContext context,
+        ListTechniciansHandler handler,
+        string? verificationStatus,
+        int? page,
+        int? size,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var actor))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(
+                new ListTechniciansQuery(actor.TenantId, verificationStatus, page ?? 1, size ?? 20), cancellationToken);
+            return Results.Ok(result);
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> ChangeVerificationAsync(
+        Guid userId,
+        VerificationAction action,
+        string? reason,
+        HttpContext context,
+        ChangeVerificationHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var actor))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(
+                new ChangeVerificationCommand(actor.TenantId, actor.UserId, userId, action, reason, CorrelationId.Get(context)),
+                cancellationToken);
+            return result switch
+            {
+                ChangeVerificationResult.Changed ok => Results.Ok(
+                    new TechnicianVerificationResponse(ok.Profile.UserId, ok.Profile.VerificationStatus, ok.Profile.VerificationReason)),
+                ChangeVerificationResult.NotFound => Results.Problem(
+                    statusCode: StatusCodes.Status404NotFound, type: Problems.NotFound, title: "El técnico no existe"),
+                _ => Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    type: Problems.InvalidTransition,
+                    title: "El estado actual del técnico no admite esta acción"),
             };
         }
         catch (DomainValidationException ex)

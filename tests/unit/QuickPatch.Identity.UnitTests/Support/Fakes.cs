@@ -97,6 +97,20 @@ public sealed class InMemoryIdentityStore
         Task.FromResult(Profiles.SingleOrDefault(p => p.TenantId == currentTenant && p.UserId == userId));
 
     public void Add(TechnicianProfile profile) => Profiles.Add(profile);
+
+    Task<TechnicianProfile?> ITechnicianProfileRepository.FindForUpdateAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult(Profiles.SingleOrDefault(p => p.TenantId == currentTenant && p.UserId == userId));
+
+    public Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken)
+    {
+        var rows = Profiles
+            .Where(p => p.TenantId == currentTenant && (verificationStatus is null || p.VerificationStatus == verificationStatus))
+            .Join(Users, p => p.UserId, u => u.Id, (p, u) => new AdminTechnicianView(
+                u.Id, u.FullName, u.Email, u.Phone, u.Role, u.DocumentId!, p.SpecialtyId, p.VerificationStatus, p.VerificationReason, p.CreatedAt))
+            .OrderBy(x => x.CreatedAt)
+            .ToList();
+        return Task.FromResult(new TechnicianPage([.. rows.Skip((page - 1) * size).Take(size)], page, size, rows.Count));
+    }
 }
 
 /// <summary>Hash trivial para pruebas rápidas de los casos de uso (el BCrypt real se prueba aparte).</summary>
