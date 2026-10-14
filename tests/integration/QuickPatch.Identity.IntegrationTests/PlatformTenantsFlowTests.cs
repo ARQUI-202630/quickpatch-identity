@@ -63,6 +63,25 @@ public class PlatformTenantsFlowTests(IdentityEnvironment env)
     }
 
     [Fact]
+    public async Task AdminPlataforma_CreaTenantConAuditoria_YElNitEsUnico()
+    {
+        await using var app = AppWithPlatformAdmin();
+        using var client = await LoggedInAsync(app);
+        var nit = Random.Shared.NextInt64(100_000_000, 999_999_999).ToString(System.Globalization.CultureInfo.InvariantCulture) + "-3";
+
+        using var crear = await client.PostAsJsonAsync(new Uri("/v1/platform/tenants", UriKind.Relative), new { name = "Delta Servicios", nit });
+        using var repetido = await client.PostAsJsonAsync(new Uri("/v1/platform/tenants", UriKind.Relative), new { name = "Delta Otra", nit });
+
+        Assert.Equal(HttpStatusCode.Created, crear.StatusCode);
+        var id = (await crear.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        Assert.Equal("activo", await env.ScalarAdminAsync("SELECT status FROM tenants WHERE id = @id", ("id", id)));
+        Assert.Equal(1L, await env.ScalarAdminAsync(
+            "SELECT count(*) FROM audit_logs WHERE target_id = @id AND tenant_id IS NULL AND action = 'crear_tenant'", ("id", id)));
+        Assert.Equal(HttpStatusCode.Conflict, repetido.StatusCode);
+        Assert.Equal(1L, await env.ScalarAdminAsync("SELECT count(*) FROM tenants WHERE nit = @nit", ("nit", nit)));
+    }
+
+    [Fact]
     public async Task ElRolDelServicioNoModificaTenantsFueraDeLaTransaccionDePlataforma()
     {
         await using var connection = new NpgsqlConnection(env.AppConnectionString);

@@ -35,6 +35,10 @@ public interface IPlatformTenantRepository
 
     /// <summary>Busca el tenant para modificarlo dentro de la transacción de plataforma.</summary>
     Task<Tenant?> FindForUpdateAsync(Guid tenantId, CancellationToken cancellationToken);
+
+    Task<bool> NitExistsAsync(string nit, CancellationToken cancellationToken);
+
+    void Add(Tenant tenant);
 }
 
 /// <summary>Registro de auditoría (<c>audit_logs</c>, DD 5.14).</summary>
@@ -132,6 +136,25 @@ public sealed class DuplicateEmailException : Exception
     }
 
     public DuplicateEmailException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>Ya existe un tenant con ese NIT (unicidad <c>ux_tenants_nit</c>, DD 5.1).</summary>
+public sealed class DuplicateNitException : Exception
+{
+    public DuplicateNitException()
+        : base("Ya existe un tenant con ese NIT.")
+    {
+    }
+
+    public DuplicateNitException(string message)
+        : base(message)
+    {
+    }
+
+    public DuplicateNitException(string message, Exception innerException)
         : base(message, innerException)
     {
     }
