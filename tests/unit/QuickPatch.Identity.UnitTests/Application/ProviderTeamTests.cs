@@ -32,7 +32,7 @@ public class ProviderTeamTests
         return user;
     }
 
-    private CreateTeamTechnicianHandler Create() => new(store, store, store, store, store, hasher, new MutableClock(Now));
+    private CreateTeamTechnicianHandler Create() => new(store, store, store, store, store, store, hasher, new MutableClock(Now));
 
     private ListTeamHandler List() => new(store, store);
 

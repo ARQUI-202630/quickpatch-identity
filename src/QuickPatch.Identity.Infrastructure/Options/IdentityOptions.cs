@@ -34,6 +34,20 @@ public sealed class PlatformOptions
 }
 
 /// <summary>
+/// Enlace de la invitación del equipo del proveedor (sección <c>Invitations</c>, contrato 1.7.0). El token va después
+/// de <c>#</c>, así no llega a los registros de los servidores web cuando el técnico abre el enlace.
+/// </summary>
+public sealed class InvitationOptions
+{
+    public const string Section = "Invitations";
+
+    /// <summary>Página o enlace profundo de la app que abre la pantalla para definir la contraseña.</summary>
+    public string LinkBase { get; set; } = "https://quickpatch.internal/activar";
+
+    public string LinkFor(string token) => $"{LinkBase.TrimEnd('#')}#token={token}";
+}
+
+/// <summary>
 /// Tenant del canal (sección <c>Channel</c>). En el registro y el login el tenant se resuelve por el canal y no
 /// por el cuerpo (RN-U5, DD 10.3). Cada canal (<c>X-Channel-Id</c>, DD 8.1) apunta a su tenant en <see cref="Tenants"/>
 /// (DEP-09); sin cabecera se usa <see cref="TenantId"/>, el tenant de la instancia.

@@ -24,7 +24,7 @@ public sealed record CreateTeamTechnicianCommand(
 
 public abstract record CreateTeamTechnicianResult
 {
-    public sealed record Created(User User, TechnicianProfile Profile) : CreateTeamTechnicianResult;
+    public sealed record Created(User User, TechnicianProfile Profile, IssuedInvitation Invitation) : CreateTeamTechnicianResult;
 
     public sealed record EmailTaken : CreateTeamTechnicianResult;
 
@@ -39,8 +39,8 @@ public abstract record CreateTeamTechnicianResult
 /// <summary>
 /// Crea el usuario con rol <c>tecnico</c>, su perfil en <c>pendiente</c> con <c>provider_id</c> del proveedor y el evento
 /// <c>technician.registered</c> en la misma transacción (Outbox, ADR-007). El técnico queda sin contraseña utilizable:
-/// el hash es de un secreto aleatorio que no se guarda, así que no puede iniciar sesión hasta que defina la suya con el
-/// enlace de Communication (flujo pendiente, SCRUM-97).
+/// el hash es de un secreto aleatorio que no se guarda, así que no puede iniciar sesión hasta que defina la suya con la
+/// invitación que se crea aquí y que el proveedor le comparte (contrato 1.7.0; sin correo en el MVP, ADR-024).
 /// </summary>
 public sealed class CreateTeamTechnicianHandler(
     ITenantUnitOfWork unitOfWork,
@@ -48,6 +48,7 @@ public sealed class CreateTeamTechnicianHandler(
     IUserRepository users,
     ITechnicianProfileRepository profiles,
     IOutbox outbox,
+    IPasswordSetupTokenRepository invitations,
     IPasswordHasher hasher,
     TimeProvider clock)
 {
@@ -93,11 +94,13 @@ public sealed class CreateTeamTechnicianHandler(
                         command.TenantId, email, unusablePassword, Roles.Tecnico, command.FullName!, command.Phone, now, document);
                     var profile = TechnicianProfile.CreatePendingInTeam(
                         user.Id, command.TenantId, provider.Id, command.SpecialtyId!.Value, now);
+                    var invitation = PasswordSetupToken.Issue(user, now, out var token);
                     users.Add(user);
                     profiles.Add(profile);
+                    invitations.Add(invitation);
                     var correlationId = command.CorrelationId == Guid.Empty ? Guid.CreateVersion7(now) : command.CorrelationId;
                     outbox.Enqueue(TechnicianRegisteredEvent.From(profile, correlationId, now));
-                    return new CreateTeamTechnicianResult.Created(user, profile);
+                    return new CreateTeamTechnicianResult.Created(user, profile, new IssuedInvitation(token, invitation.ExpiresAt));
                 },
                 cancellationToken);
         }

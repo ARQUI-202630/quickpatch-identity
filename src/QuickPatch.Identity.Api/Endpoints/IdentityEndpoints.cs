@@ -52,6 +52,24 @@ public sealed record TechnicianVerificationResponse(Guid UserId, string Verifica
 /// <summary>Esquema <c>ProviderTechnicianRequest</c> del contrato 1.4.0: el registro de técnico sin contraseña ni rol.</summary>
 public sealed record ProviderTechnicianRequest(string? Email, string? FullName, string? Phone, string? DocumentId, Guid? SpecialtyId);
 
+/// <summary>Esquema <c>Invitation</c> del contrato 1.7.0.</summary>
+public sealed record InvitationResponse(string Link, string Token, DateTimeOffset ExpiresAt)
+{
+    public static InvitationResponse From(IssuedInvitation invitation, InvitationOptions options) =>
+        new(options.LinkFor(invitation.Token), invitation.Token, invitation.ExpiresAt);
+}
+
+/// <summary>Esquema <c>ProviderTechnicianCreated</c> del contrato 1.7.0: <c>UserProfile</c> más la invitación.</summary>
+public sealed record ProviderTechnicianCreated(
+    Guid Id, string Email, string FullName, string Role, string? Phone, string? VerificationStatus, InvitationResponse Invitation)
+{
+    public static ProviderTechnicianCreated From(User user, TechnicianProfile profile, InvitationResponse invitation) =>
+        new(user.Id, user.Email, user.FullName, user.Role, user.Phone, profile.VerificationStatus, invitation);
+}
+
+/// <summary>Esquema <c>PasswordSetupRequest</c> del contrato 1.7.0.</summary>
+public sealed record PasswordSetupRequest(string? Token, string? Password);
+
 /// <summary>Endpoints del contrato <c>identity.v1.yaml</c>.</summary>
 public static class IdentityEndpoints
 {
@@ -62,6 +80,7 @@ public static class IdentityEndpoints
     {
         app.MapPost("/v1/auth/register/client", RegisterClientAsync).WithName("registerClient").AllowAnonymous();
         app.MapPost("/v1/auth/register/technician", RegisterTechnicianAsync).WithName("registerTechnician").AllowAnonymous();
+        app.MapPost("/v1/auth/password/setup", SetupPasswordAsync).WithName("setupPassword").AllowAnonymous();
         app.MapPost("/v1/auth/login", LoginAsync).WithName("login").AllowAnonymous();
         app.MapGet("/v1/users/me", GetCurrentUserAsync).WithName("getCurrentUser").RequireAuthorization();
 
@@ -87,6 +106,7 @@ public static class IdentityEndpoints
         var team = app.MapGroup("/v1/providers/me/technicians").RequireAuthorization(policy => policy.RequireRole(Roles.Proveedor));
         team.MapPost(string.Empty, CreateTeamTechnicianAsync).WithName("createProviderTechnician");
         team.MapGet(string.Empty, ListTeamAsync).WithName("listProviderTechnicians");
+        team.MapPost("/{userId:guid}/invitation", RenewInvitationAsync).WithName("renewProviderTechnicianInvitation");
         return app;
     }
 
@@ -343,6 +363,7 @@ public static class IdentityEndpoints
         ProviderTechnicianRequest body,
         HttpContext context,
         CreateTeamTechnicianHandler handler,
+        IOptions<InvitationOptions> invitations,
         CancellationToken cancellationToken)
     {
         if (!AuthenticatedUser.TryFrom(context.User, out var provider))
@@ -366,7 +387,9 @@ public static class IdentityEndpoints
 
             return result switch
             {
-                CreateTeamTechnicianResult.Created ok => Results.Json(UserProfile.From(ok.User, ok.Profile), statusCode: StatusCodes.Status201Created),
+                CreateTeamTechnicianResult.Created ok => Results.Json(
+                    ProviderTechnicianCreated.From(ok.User, ok.Profile, InvitationResponse.From(ok.Invitation, invitations.Value)),
+                    statusCode: StatusCodes.Status201Created),
                 CreateTeamTechnicianResult.TenantDisabled => TenantDisabled(),
                 CreateTeamTechnicianResult.NotProvider => Results.Problem(
                     statusCode: StatusCodes.Status403Forbidden,
@@ -377,6 +400,65 @@ public static class IdentityEndpoints
                     type: Problems.DocumentTaken,
                     title: "El documento ya está registrado"),
                 _ => EmailTaken(),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> RenewInvitationAsync(
+        Guid userId,
+        HttpContext context,
+        RenewInvitationHandler handler,
+        IOptions<InvitationOptions> invitations,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var provider))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        var result = await handler.HandleAsync(new RenewInvitationCommand(provider.TenantId, provider.UserId, userId), cancellationToken);
+        return result switch
+        {
+            RenewInvitationResult.Issued ok => Results.Json(
+                InvitationResponse.From(ok.Invitation, invitations.Value), statusCode: StatusCodes.Status201Created),
+            RenewInvitationResult.PasswordAlreadySet => Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                type: Problems.PasswordAlreadySet,
+                title: "El técnico ya definió su contraseña"),
+            _ => Results.Problem(
+                statusCode: StatusCodes.Status404NotFound,
+                type: Problems.NotFound,
+                title: "El técnico no es del equipo del proveedor"),
+        };
+    }
+
+    private static async Task<IResult> SetupPasswordAsync(
+        PasswordSetupRequest body,
+        HttpContext context,
+        IOptions<ChannelOptions> channel,
+        SetupPasswordHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (!TryChannelTenant(context, channel, out var tenantId))
+        {
+            return ChannelNotConfigured();
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(new SetupPasswordCommand(tenantId, body.Token, body.Password), cancellationToken);
+            return result switch
+            {
+                SetupPasswordResult.Done => Results.NoContent(),
+                SetupPasswordResult.TenantDisabled => TenantDisabled(),
+                _ => Results.Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    type: Problems.InvalidLink,
+                    title: "El enlace no es válido o ya venció"),
             };
         }
         catch (DomainValidationException ex)

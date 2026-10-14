@@ -33,6 +33,7 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.Configure<PasswordOptions>(configuration.GetSection(PasswordOptions.Section));
         services.Configure<ChannelOptions>(configuration.GetSection(ChannelOptions.Section));
+        services.Configure<InvitationOptions>(configuration.GetSection(InvitationOptions.Section));
         services.Configure<PlatformOptions>(configuration.GetSection(PlatformOptions.Section));
 
         services.AddDbContext<IdentityDbContext>(options =>
@@ -42,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ITechnicianProfileRepository, TechnicianProfileRepository>();
+        services.AddScoped<IPasswordSetupTokenRepository, PasswordSetupTokenRepository>();
         services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
         services.AddScoped<IPlatformTenantRepository, PlatformTenantRepository>();
         services.AddScoped<IAuditLog, AuditLog>();

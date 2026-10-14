@@ -61,7 +61,25 @@ public interface IUserRepository
 
     Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
 
+    /// <summary>Busca por id y bloquea la fila (<c>FOR UPDATE</c>) para modificar al usuario en la transacción.</summary>
+    Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken);
+
     void Add(User user);
+}
+
+/// <summary>Invitaciones para definir la contraseña (<c>password_setup_tokens</c>, contrato 1.7.0), bajo RLS.</summary>
+public interface IPasswordSetupTokenRepository
+{
+    /// <summary>Busca por el hash del token y bloquea la fila (<c>FOR UPDATE</c>) para que solo se use una vez.</summary>
+    Task<PasswordSetupToken?> FindByHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken);
+
+    /// <summary>Invitaciones del usuario sin usar y sin vencer, bloqueadas para anularlas.</summary>
+    Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
+
+    /// <summary>Si el usuario ya definió su contraseña con alguna invitación.</summary>
+    Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken);
+
+    void Add(PasswordSetupToken token);
 }
 
 public interface ITechnicianProfileRepository

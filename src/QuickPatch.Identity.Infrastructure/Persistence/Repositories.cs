@@ -79,7 +79,36 @@ public sealed class UserRepository(IdentityDbContext db) : IUserRepository
     public Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
         db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
+    public async Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var rows = await db.Users
+            .FromSql($"SELECT * FROM users WHERE id = {id} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
     public void Add(User user) => db.Users.Add(user);
+}
+
+public sealed class PasswordSetupTokenRepository(IdentityDbContext db) : IPasswordSetupTokenRepository
+{
+    public async Task<PasswordSetupToken?> FindByHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken)
+    {
+        var rows = await db.PasswordSetupTokens
+            .FromSql($"SELECT * FROM password_setup_tokens WHERE token_hash = {tokenHash} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
+    public async Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await db.PasswordSetupTokens
+            .FromSql($"SELECT * FROM password_setup_tokens WHERE user_id = {userId} AND used_at IS NULL AND expires_at > {now} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+
+    public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.PasswordSetupTokens.AnyAsync(x => x.UserId == userId && x.UsedAt != null, cancellationToken);
+
+    public void Add(PasswordSetupToken token) => db.PasswordSetupTokens.Add(token);
 }
 
 public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnicianProfileRepository
