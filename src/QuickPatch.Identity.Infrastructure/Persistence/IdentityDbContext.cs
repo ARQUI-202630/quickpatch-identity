@@ -71,8 +71,13 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasOne<User>().WithOne().HasForeignKey<TechnicianProfile>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+
+            // Equipo del proveedor (P-02, RF-16): FK física al usuario proveedor dentro de Identity.
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.ProviderId).OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_technician_profiles_provider");
             e.HasIndex(x => x.TenantId).HasDatabaseName("ix_technician_profiles_tenant");
             e.HasIndex(x => new { x.TenantId, x.VerificationStatus }).HasDatabaseName("ix_technician_profiles_tenant_status");
+            e.HasIndex(x => x.ProviderId).HasDatabaseName("ix_technician_profiles_provider").HasFilter("provider_id IS NOT NULL");
         });
 
         modelBuilder.Entity<AuditEntry>(e =>

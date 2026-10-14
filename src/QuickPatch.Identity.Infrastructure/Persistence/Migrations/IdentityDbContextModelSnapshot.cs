@@ -104,6 +104,10 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
 
                     b.HasKey("UserId");
 
+                    b.HasIndex("ProviderId")
+                        .HasDatabaseName("ix_technician_profiles_provider")
+                        .HasFilter("provider_id IS NOT NULL");
+
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_technician_profiles_tenant");
 
@@ -274,6 +278,12 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("QuickPatch.Identity.Domain.Technicians.TechnicianProfile", b =>
                 {
+                    b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_technician_profiles_provider");
+
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")

@@ -111,6 +111,16 @@ public sealed class InMemoryIdentityStore
             .ToList();
         return Task.FromResult(new TechnicianPage([.. rows.Skip((page - 1) * size).Take(size)], page, size, rows.Count));
     }
+
+    public Task<ProviderTechnicianPage> ListTeamAsync(Guid providerId, bool? active, int page, int size, CancellationToken cancellationToken)
+    {
+        var rows = Profiles
+            .Where(p => p.TenantId == currentTenant && p.ProviderId == providerId
+                && (active is null || (p.VerificationStatus == VerificationStatus.Aprobado) == active))
+            .Join(Users, p => p.UserId, u => u.Id, (p, u) => new ProviderTechnicianView(u.Id, u.FullName, p.SpecialtyId, p.VerificationStatus))
+            .ToList();
+        return Task.FromResult(new ProviderTechnicianPage([.. rows.Skip((page - 1) * size).Take(size)], page, size, rows.Count));
+    }
 }
 
 /// <summary>Hash trivial para pruebas rápidas de los casos de uso (el BCrypt real se prueba aparte).</summary>

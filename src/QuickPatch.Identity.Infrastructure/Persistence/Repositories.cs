@@ -126,6 +126,29 @@ public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnic
         return new TechnicianPage(items, page, size, total);
     }
 
+    public async Task<ProviderTechnicianPage> ListTeamAsync(Guid providerId, bool? active, int page, int size, CancellationToken cancellationToken)
+    {
+        var profiles = db.TechnicianProfiles.AsNoTracking().Where(x => x.ProviderId == providerId);
+        profiles = active switch
+        {
+            true => profiles.Where(x => x.VerificationStatus == VerificationStatus.Aprobado),
+            false => profiles.Where(x => x.VerificationStatus != VerificationStatus.Aprobado),
+            null => profiles,
+        };
+
+        var query = profiles.Join(db.Users.AsNoTracking(), p => p.UserId, u => u.Id, (p, u) => new { Profile = p, User = u });
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(x => x.Profile.CreatedAt)
+            .ThenBy(x => x.Profile.UserId)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(x => new ProviderTechnicianView(x.User.Id, x.User.FullName, x.Profile.SpecialtyId, x.Profile.VerificationStatus))
+            .ToListAsync(cancellationToken);
+        return new ProviderTechnicianPage(items, page, size, total);
+    }
+
     public void Add(TechnicianProfile profile) => db.TechnicianProfiles.Add(profile);
 }
 /// <summary>

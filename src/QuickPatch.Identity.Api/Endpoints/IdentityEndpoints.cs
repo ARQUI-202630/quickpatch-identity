@@ -46,6 +46,9 @@ public sealed record VerificationReasonRequest(string? Reason);
 /// <summary>Esquema <c>TechnicianVerification</c> del contrato 1.3.0.</summary>
 public sealed record TechnicianVerificationResponse(Guid UserId, string VerificationStatus, string? Reason);
 
+/// <summary>Esquema <c>ProviderTechnicianRequest</c> del contrato 1.4.0: el registro de técnico sin contraseña ni rol.</summary>
+public sealed record ProviderTechnicianRequest(string? Email, string? FullName, string? Phone, string? DocumentId, Guid? SpecialtyId);
+
 /// <summary>Endpoints del contrato <c>identity.v1.yaml</c>.</summary>
 public static class IdentityEndpoints
 {
@@ -71,6 +74,11 @@ public static class IdentityEndpoints
             ChangeVerificationAsync(userId, VerificationAction.Reject, body.Reason, context, handler, ct)).WithName("rejectTechnician");
         admin.MapPost("/{userId:guid}/suspend", (Guid userId, VerificationReasonRequest body, HttpContext context, ChangeVerificationHandler handler, CancellationToken ct) =>
             ChangeVerificationAsync(userId, VerificationAction.Suspend, body.Reason, context, handler, ct)).WithName("suspendTechnician");
+
+        // Equipo del proveedor (RF-16, DD 8.3.14): solo el proveedor y sobre su propio equipo (RN-TP4).
+        var team = app.MapGroup("/v1/providers/me/technicians").RequireAuthorization(policy => policy.RequireRole(Roles.Proveedor));
+        team.MapPost(string.Empty, CreateTeamTechnicianAsync).WithName("createProviderTechnician");
+        team.MapGet(string.Empty, ListTeamAsync).WithName("listProviderTechnicians");
         return app;
     }
 
@@ -285,6 +293,77 @@ public static class IdentityEndpoints
                     type: Problems.InvalidTransition,
                     title: "El estado actual del técnico no admite esta acción"),
             };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> CreateTeamTechnicianAsync(
+        ProviderTechnicianRequest body,
+        HttpContext context,
+        CreateTeamTechnicianHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var provider))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(
+                new CreateTeamTechnicianCommand(
+                    provider.TenantId,
+                    provider.UserId,
+                    body.Email,
+                    body.FullName,
+                    body.Phone,
+                    body.DocumentId,
+                    body.SpecialtyId,
+                    CorrelationId.Get(context)),
+                cancellationToken);
+
+            return result switch
+            {
+                CreateTeamTechnicianResult.Created ok => Results.Json(UserProfile.From(ok.User, ok.Profile), statusCode: StatusCodes.Status201Created),
+                CreateTeamTechnicianResult.TenantDisabled => TenantDisabled(),
+                CreateTeamTechnicianResult.NotProvider => Results.Problem(
+                    statusCode: StatusCodes.Status403Forbidden,
+                    type: Problems.Forbidden,
+                    title: "El usuario del token no es un proveedor del tenant"),
+                CreateTeamTechnicianResult.DocumentTaken => Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    type: Problems.DocumentTaken,
+                    title: "El documento ya está registrado"),
+                _ => EmailTaken(),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> ListTeamAsync(
+        HttpContext context,
+        ListTeamHandler handler,
+        string? status,
+        int? page,
+        int? size,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var provider))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(
+                new ListTeamQuery(provider.TenantId, provider.UserId, status, page ?? 1, size ?? 20), cancellationToken);
+            return Results.Ok(result);
         }
         catch (DomainValidationException ex)
         {

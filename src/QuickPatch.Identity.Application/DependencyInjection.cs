@@ -23,6 +23,8 @@ public static class DependencyInjection
         services.AddScoped<RegisterTechnicianHandler>();
         services.AddScoped<ListTechniciansHandler>();
         services.AddScoped<ChangeVerificationHandler>();
+        services.AddScoped<CreateTeamTechnicianHandler>();
+        services.AddScoped<ListTeamHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();
