@@ -40,6 +40,9 @@ public sealed record TenantResponse(Guid Id, string Name, string Nit, string Sta
 
 public sealed record UpdateTenantStatusRequest(string? Status);
 
+/// <summary>Esquema <c>CreateTenantRequest</c> del contrato 1.5.0.</summary>
+public sealed record CreateTenantRequest(string? Name, string? Nit);
+
 /// <summary>Esquema <c>VerificationReasonRequest</c> del contrato 1.3.0.</summary>
 public sealed record VerificationReasonRequest(string? Reason);
 
@@ -64,6 +67,8 @@ public static class IdentityEndpoints
 
         // Operaciones de plataforma (RF-21, DD 10.4): solo admin_plataforma (RN-U6).
         app.MapGet("/v1/platform/tenants", ListTenantsAsync).WithName("listTenants")
+            .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
+        app.MapPost("/v1/platform/tenants", CreateTenantAsync).WithName("createTenant")
             .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
         app.MapPatch("/v1/platform/tenants/{id:guid}", UpdateTenantStatusAsync).WithName("updateTenantStatus")
             .RequireAuthorization(policy => policy.RequireRole(Roles.AdminPlataforma));
@@ -211,6 +216,35 @@ public static class IdentityEndpoints
     {
         var tenants = await handler.HandleAsync(cancellationToken);
         return Results.Ok(tenants.Select(TenantResponse.From));
+    }
+
+    private static async Task<IResult> CreateTenantAsync(
+        CreateTenantRequest request, HttpContext context, CreateTenantHandler handler, CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var actor))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            var correlation = CorrelationId.Get(context);
+            var result = await handler.HandleAsync(
+                new CreateTenantCommand(request.Name, request.Nit, actor.UserId, correlation == Guid.Empty ? null : correlation.ToString()),
+                cancellationToken);
+            return result switch
+            {
+                CreateTenantResult.Created ok => Results.Json(TenantResponse.From(ok.Tenant), statusCode: StatusCodes.Status201Created),
+                _ => Results.Problem(
+                    statusCode: StatusCodes.Status409Conflict,
+                    type: Problems.NitTaken,
+                    title: "Ya existe un tenant con ese NIT"),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
     }
 
     private static async Task<IResult> UpdateTenantStatusAsync(

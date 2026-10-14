@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<GetCurrentUserHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();
         services.AddScoped<ListTenantsHandler>();
+        services.AddScoped<CreateTenantHandler>();
         services.AddScoped<UpdateTenantStatusHandler>();
         return services;
     }
