@@ -157,6 +157,53 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordSetupToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("token_hash")
+                        .IsFixedLength();
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_password_setup_tokens_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_password_setup_tokens_user");
+
+                    b.ToTable("password_setup_tokens", (string)null);
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -293,6 +340,21 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
                         .WithOne()
                         .HasForeignKey("QuickPatch.Identity.Domain.Technicians.TechnicianProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordSetupToken", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

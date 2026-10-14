@@ -10,7 +10,8 @@ namespace QuickPatch.Identity.UnitTests.Support;
 
 /// <summary>Puertos en memoria. Emula RLS: solo se ven los datos del tenant de la transacción en curso.</summary>
 public sealed class InMemoryIdentityStore
-    : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog, IOutbox
+    : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog, IOutbox,
+      IPasswordSetupTokenRepository
 {
     private Guid? currentTenant;
 
@@ -59,6 +60,19 @@ public sealed class InMemoryIdentityStore
 
     public List<TechnicianProfile> Profiles { get; } = [];
 
+    public List<PasswordSetupToken> Invitations { get; } = [];
+
+    public Task<PasswordSetupToken?> FindByHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken) =>
+        Task.FromResult(Invitations.SingleOrDefault(i => i.TenantId == currentTenant && i.TokenHash == tokenHash));
+
+    public Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PasswordSetupToken>>([.. Invitations.Where(i => i.TenantId == currentTenant && i.UserId == userId && i.IsUsable(now))]);
+
+    public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId && i.UsedAt is not null));
+
+    public void Add(PasswordSetupToken token) => Invitations.Add(token);
+
     /// <summary>Simula una carrera con el documento: la base rechaza el insert por (tenant_id, document_id).</summary>
     public bool FailNextSaveWithDuplicateDocument { get; set; }
 
@@ -105,6 +119,8 @@ public sealed class InMemoryIdentityStore
 
     public Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Users.SingleOrDefault(u => u.TenantId == currentTenant && u.Id == id));
+
+    public Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken) => FindByIdAsync(id, cancellationToken);
 
     public void Add(User user) => Users.Add(user);
 

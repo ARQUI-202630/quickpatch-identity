@@ -19,6 +19,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
 
     public DbSet<AuditEntry> AuditEntries => Set<AuditEntry>();
 
+    public DbSet<PasswordSetupToken> PasswordSetupTokens => Set<PasswordSetupToken>();
+
     public DbSet<OutboxEventRecord> OutboxEvents => Set<OutboxEventRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -78,6 +80,24 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.HasIndex(x => x.TenantId).HasDatabaseName("ix_technician_profiles_tenant");
             e.HasIndex(x => new { x.TenantId, x.VerificationStatus }).HasDatabaseName("ix_technician_profiles_tenant_status");
             e.HasIndex(x => x.ProviderId).HasDatabaseName("ix_technician_profiles_provider").HasFilter("provider_id IS NOT NULL");
+        });
+
+        // Invitaciones del equipo del proveedor (DD 8.3.14, contrato 1.7.0): solo el hash del token.
+        modelBuilder.Entity<PasswordSetupToken>(e =>
+        {
+            e.ToTable("password_setup_tokens");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.TokenHash).HasColumnName("token_hash").HasMaxLength(64).IsFixedLength();
+            e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
+            e.Property(x => x.UsedAt).HasColumnName("used_at");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => x.TokenHash).IsUnique().HasDatabaseName("ux_password_setup_tokens_hash");
+            e.HasIndex(x => x.UserId).HasDatabaseName("ix_password_setup_tokens_user");
         });
 
         modelBuilder.Entity<AuditEntry>(e =>

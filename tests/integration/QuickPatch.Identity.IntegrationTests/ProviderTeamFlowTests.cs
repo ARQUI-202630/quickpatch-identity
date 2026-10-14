@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 using Npgsql;
@@ -128,6 +129,83 @@ public class ProviderTeamFlowTests(IdentityEnvironment env)
             $"UPDATE technician_profiles SET provider_id = '{Guid.NewGuid()}' WHERE user_id = '{id}'"));
 
         Assert.Equal("fk_technician_profiles_provider", ex.ConstraintName);
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task Invitacion_ElTecnicoDefineSuContrasenaUnaVez_BajoRls()
+    {
+        var (client, _) = await ProviderAsync(env.App);
+        var email = $"t{Guid.NewGuid():N}@correo.co";
+        using var alta = await client.PostAsJsonAsync(Team, new
+        {
+            email,
+            fullName = "Técnico Invitado",
+            phone = "3009876543",
+            documentId = Guid.NewGuid().ToString("N")[..12],
+            specialtyId = Guid.NewGuid(),
+        });
+        var creado = await alta.Content.ReadFromJsonAsync<JsonElement>();
+        var id = creado.GetProperty("id").GetGuid();
+        var token = creado.GetProperty("invitation").GetProperty("token").GetString()!;
+        using var anonimo = env.App.CreateClient();
+        var setup = new Uri("/v1/auth/password/setup", UriKind.Relative);
+
+        using var definir = await anonimo.PostAsJsonAsync(setup, new { token, password = "MiClave2026" });
+        using var repetir = await anonimo.PostAsJsonAsync(setup, new { token, password = "OtraClave2026" });
+        using var login = await anonimo.PostAsJsonAsync(new Uri("/v1/auth/login", UriKind.Relative), new { email, password = "MiClave2026" });
+        using var renovar = await client.PostAsync(new Uri($"/v1/providers/me/technicians/{id}/invitation", UriKind.Relative), null);
+
+        Assert.Equal(HttpStatusCode.NoContent, definir.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, repetir.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, renovar.StatusCode);
+
+        // En la base solo queda el hash, la invitación usada y del tenant del técnico.
+        Assert.Equal(0L, await env.ScalarAdminAsync("SELECT count(*) FROM password_setup_tokens WHERE token_hash = @t", ("t", token)));
+        Assert.Equal(1L, await env.ScalarAdminAsync(
+            "SELECT count(*) FROM password_setup_tokens WHERE user_id = @u AND used_at IS NOT NULL AND tenant_id = @tenant",
+            ("u", id),
+            ("tenant", IdentityEnvironment.ActiveTenant)));
+
+        // RLS: con otro tenant en la sesión, el rol del servicio no ve la invitación.
+        await using var connection = new NpgsqlConnection(env.AppConnectionString);
+        await connection.OpenAsync();
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var set = new NpgsqlCommand("SELECT set_config('app.current_tenant', @t, true)", connection, transaction))
+        {
+            set.Parameters.AddWithValue("t", Guid.NewGuid().ToString());
+            await set.ExecuteNonQueryAsync();
+        }
+
+        await using var count = new NpgsqlCommand("SELECT count(*) FROM password_setup_tokens WHERE user_id = @u", connection, transaction);
+        count.Parameters.AddWithValue("u", id);
+        Assert.Equal(0L, (long)(await count.ExecuteScalarAsync())!);
+        client.Dispose();
+    }
+
+    [Fact]
+    public async Task Invitacion_ConElCanalDeOtroTenant_EsEnlaceInvalido()
+    {
+        var gama = Guid.NewGuid();
+        await env.ExecuteAdminAsync($"INSERT INTO tenants (id, name, nit, status, created_at) VALUES ('{gama}', 'Gama', '{Random.Shared.Next(100_000_000, 999_999_999)}-5', 'activo', now());");
+        var (client, _) = await ProviderAsync(env.App);
+        using var alta = await client.PostAsJsonAsync(Team, new
+        {
+            email = $"t{Guid.NewGuid():N}@correo.co",
+            fullName = "Técnico Invitado",
+            phone = "3009876543",
+            documentId = Guid.NewGuid().ToString("N")[..12],
+            specialtyId = Guid.NewGuid(),
+        });
+        var token = (await alta.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("invitation").GetProperty("token").GetString();
+        await using var app = env.App.WithWebHostBuilder(b => b.UseSetting("Channel:Tenants:canal-gama", gama.ToString()));
+        using var gamaClient = app.CreateClient();
+        gamaClient.DefaultRequestHeaders.Add("X-Channel-Id", "canal-gama");
+
+        using var response = await gamaClient.PostAsJsonAsync(new Uri("/v1/auth/password/setup", UriKind.Relative), new { token, password = "MiClave2026" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         client.Dispose();
     }
 }

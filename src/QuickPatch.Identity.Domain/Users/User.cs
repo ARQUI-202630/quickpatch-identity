@@ -49,7 +49,7 @@ public sealed class User
 
     public string Email { get; }
 
-    public string PasswordHash { get; }
+    public string PasswordHash { get; private set; }
 
     public string Role { get; }
 
@@ -81,9 +81,9 @@ public sealed class User
             errors["email"] = ["El correo no tiene un formato válido."];
         }
 
-        if (password is null || password.Length is < PasswordMinLength or > PasswordMaxLength)
+        if (!IsValidPassword(password))
         {
-            errors["password"] = [$"La contraseña debe tener entre {PasswordMinLength} y {PasswordMaxLength} caracteres."];
+            errors["password"] = [PasswordError];
         }
 
         var nombre = fullName?.Trim() ?? string.Empty;
@@ -208,6 +208,27 @@ public sealed class User
         FailedLoginAttempts = 0;
         LockedUntil = null;
     }
+
+    /// <summary>Valida la contraseña con la política del registro (RN-U2, TD IDN-001).</summary>
+    public static void ValidatePassword(string? password)
+    {
+        if (!IsValidPassword(password))
+        {
+            throw new DomainValidationException(new Dictionary<string, string[]> { ["password"] = [PasswordError] });
+        }
+    }
+
+    /// <summary>Reemplaza el hash de la contraseña (invitación del equipo, DD 8.3.14) y quita el bloqueo.</summary>
+    public void SetPassword(string passwordHash)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(passwordHash);
+        PasswordHash = passwordHash;
+        RegisterSuccessfulLogin();
+    }
+
+    private static string PasswordError => $"La contraseña debe tener entre {PasswordMinLength} y {PasswordMaxLength} caracteres.";
+
+    private static bool IsValidPassword(string? password) => password is { Length: >= PasswordMinLength and <= PasswordMaxLength };
 
     /// <summary>Teléfono y documento obligatorios y especialidad, comunes a todo técnico (RF-02, RF-16).</summary>
     private static void AddTechnicianErrors(Dictionary<string, string[]> errors, string? phone, string? documentId, Guid? specialtyId)

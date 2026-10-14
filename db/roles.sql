@@ -20,6 +20,8 @@ GRANT USAGE ON SCHEMA public TO identity_app, identity_platform, identity_outbox
 -- Rol del servicio: todo bajo RLS. Sobre tenants solo lectura: ningún tenant puede modificarse a sí mismo.
 GRANT SELECT ON tenants TO identity_app;
 GRANT SELECT, INSERT, UPDATE ON users, technician_profiles TO identity_app;
+-- Invitaciones del equipo del proveedor (contrato 1.7.0): solo el hash del token; nunca se borran.
+GRANT SELECT, INSERT, UPDATE ON password_setup_tokens TO identity_app;
 
 -- Auditoría (DD 5.14): el servicio registra y consulta las de su tenant (RLS); nunca las modifica ni las borra.
 GRANT SELECT, INSERT ON audit_logs TO identity_app;
