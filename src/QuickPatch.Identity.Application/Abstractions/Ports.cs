@@ -61,6 +61,9 @@ public interface IUserRepository
 
     Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken);
 
+    /// <summary>Usuarios del tenant de la sesión (RLS) con esos identificadores; los que no existen se omiten.</summary>
+    Task<IReadOnlyList<User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
     /// <summary>Busca por id y bloquea la fila (<c>FOR UPDATE</c>) para modificar al usuario en la transacción.</summary>
     Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
