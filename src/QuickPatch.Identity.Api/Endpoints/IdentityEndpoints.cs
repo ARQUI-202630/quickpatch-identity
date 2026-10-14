@@ -52,6 +52,9 @@ public sealed record ProviderTechnicianRequest(string? Email, string? FullName, 
 /// <summary>Endpoints del contrato <c>identity.v1.yaml</c>.</summary>
 public static class IdentityEndpoints
 {
+    /// <summary>Canal de las peticiones sin token (DD 8.1). El Gateway la sobrescribe; el cuerpo nunca trae el tenant.</summary>
+    private const string ChannelHeader = "X-Channel-Id";
+
     public static IEndpointRouteBuilder MapIdentityEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/v1/auth/register/client", RegisterClientAsync).WithName("registerClient").AllowAnonymous();
@@ -84,11 +87,12 @@ public static class IdentityEndpoints
 
     private static async Task<IResult> RegisterClientAsync(
         RegisterClientRequest body,
+        HttpContext context,
         IOptions<ChannelOptions> channel,
         RegisterClientHandler handler,
         CancellationToken cancellationToken)
     {
-        if (channel.Value.TenantId == Guid.Empty)
+        if (!TryChannelTenant(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -96,7 +100,7 @@ public static class IdentityEndpoints
         try
         {
             var result = await handler.HandleAsync(
-                new RegisterClientCommand(channel.Value.TenantId, body.Email, body.Password, body.FullName, body.Phone),
+                new RegisterClientCommand(tenantId, body.Email, body.Password, body.FullName, body.Phone),
                 cancellationToken);
 
             return result switch
@@ -119,7 +123,7 @@ public static class IdentityEndpoints
         RegisterTechnicianHandler handler,
         CancellationToken cancellationToken)
     {
-        if (channel.Value.TenantId == Guid.Empty)
+        if (!TryChannelTenant(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -128,7 +132,7 @@ public static class IdentityEndpoints
         {
             var result = await handler.HandleAsync(
                 new RegisterTechnicianCommand(
-                    channel.Value.TenantId,
+                    tenantId,
                     body.Email,
                     body.Password,
                     body.FullName,
@@ -158,12 +162,13 @@ public static class IdentityEndpoints
 
     private static async Task<IResult> LoginAsync(
         LoginRequest body,
+        HttpContext context,
         IOptions<ChannelOptions> channel,
         LoginHandler handler,
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        if (channel.Value.TenantId == Guid.Empty)
+        if (!TryChannelTenant(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -176,7 +181,7 @@ public static class IdentityEndpoints
             });
         }
 
-        var result = await handler.HandleAsync(new LoginCommand(channel.Value.TenantId, body.Email, body.Password), cancellationToken);
+        var result = await handler.HandleAsync(new LoginCommand(tenantId, body.Email, body.Password), cancellationToken);
         return result switch
         {
             LoginResult.Succeeded ok => Results.Ok(new LoginResponse(ok.Token.AccessToken, "Bearer", ok.Token.ExpiresInSeconds, UserProfile.From(ok.User, ok.Profile))),
@@ -387,6 +392,10 @@ public static class IdentityEndpoints
         statusCode: StatusCodes.Status409Conflict,
         type: Problems.EmailTaken,
         title: "El correo ya está registrado");
+
+    /// <summary>Tenant del canal por <c>X-Channel-Id</c> (RN-U5, DEP-09); nunca de un campo de la petición.</summary>
+    private static bool TryChannelTenant(HttpContext context, IOptions<ChannelOptions> channel, out Guid tenantId) =>
+        channel.Value.TryResolve(context.Request.Headers[ChannelHeader].ToString(), out tenantId);
 
     private static IResult ChannelNotConfigured() => Results.Problem(
         statusCode: StatusCodes.Status503ServiceUnavailable,
