@@ -272,6 +272,59 @@ public class IdentityFlowTests(IdentityEnvironment env)
     }
 
     [Fact]
+    public async Task DosCanales_CadaUnoRegistraYAutenticaSoloEnSuTenant()
+    {
+        var gama = Guid.NewGuid();
+        await env.ExecuteAdminAsync($"INSERT INTO tenants (id, name, nit, status, created_at) VALUES ('{gama}', 'Gama', '{Random.Shared.Next(100_000_000, 999_999_999)}-4', 'activo', now());");
+        await using var app = env.App.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Channel:Tenants:canal-alfa", IdentityEnvironment.ActiveTenant.ToString());
+            b.UseSetting("Channel:Tenants:canal-gama", gama.ToString());
+        });
+        using var client = app.CreateClient();
+        var email = NewEmail();
+        var soloAlfa = NewEmail();
+
+        using var enAlfa = await client.SendAsync(WithChannel(Register, new { email, password = "Segura123", fullName = "Ana" }, "canal-alfa"));
+        using var enGama = await client.SendAsync(WithChannel(Register, new { email, password = "Segura123", fullName = "Ana" }, "canal-gama"));
+        using var otro = await client.SendAsync(WithChannel(Register, new { email = soloAlfa, password = "Segura123", fullName = "Beto" }, "canal-alfa"));
+        using var cruzado = await client.SendAsync(WithChannel(Login, new { email = soloAlfa, password = "Segura123" }, "canal-gama"));
+        using var ajeno = await client.SendAsync(WithChannel(Login, new { email = soloAlfa, password = "Segura123" }, "canal-ajeno"));
+
+        Assert.Equal(HttpStatusCode.Created, enAlfa.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, enGama.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, otro.StatusCode);
+        Assert.Equal(1L, await env.ScalarAdminAsync("SELECT count(*) FROM users WHERE email = @e AND tenant_id = @t", ("e", email), ("t", gama)));
+        Assert.Equal(1L, await env.ScalarAdminAsync("SELECT count(*) FROM users WHERE email = @e AND tenant_id = @t", ("e", email), ("t", IdentityEnvironment.ActiveTenant)));
+        Assert.Equal(HttpStatusCode.Unauthorized, cruzado.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, ajeno.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rls_HabilitadoYForzadoEnCadaTablaConTenant()
+    {
+        // DD 10.1: toda tabla con tenant_id (y tenants, por su id) tiene RLS habilitado y forzado.
+        var sinRls = await env.ScalarAdminAsync("""
+            SELECT coalesce(string_agg(c.relname, ', ' ORDER BY c.relname), '')
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+            WHERE c.relkind = 'r'
+              AND (c.relname = 'tenants' OR EXISTS (
+                    SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped))
+              AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
+            """);
+
+        Assert.Equal(string.Empty, sinRls);
+    }
+
+    private static HttpRequestMessage WithChannel(Uri uri, object body, string channel)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-Channel-Id", channel);
+        return request;
+    }
+
+    [Fact]
     public async Task RegistroDeTecnico_CreaPerfilPendiente_YElDocumentoEsUnicoPorTenant()
     {
         using var client = env.App.CreateClient();

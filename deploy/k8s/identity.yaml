@@ -13,8 +13,11 @@ data:
   Jwt__Issuer: quickpatch-identity
   Jwt__Audience: quickpatch
   Jwt__Lifetime: "01:00:00"
-  # Tenant del canal (MVP con un solo tenant, DD 10.3). Debe existir en la tabla tenants.
+  # Tenant de las peticiones sin X-Channel-Id (DD 10.3). Debe existir en la tabla tenants.
   Channel__TenantId: "00000000-0000-0000-0000-000000000001"
+  # Canal -> tenant (RN-U5, DEP-09). Con el mapa definido, un canal que no esté aquí recibe 503 canal-sin-tenant.
+  Channel__Tenants__quickpatch-mobile: "00000000-0000-0000-0000-000000000001"
+  Channel__Tenants__quickpatch-web: "00000000-0000-0000-0000-000000000001"
   Bootstrap__AdminFullName: Administrador QUICKPATCH
   # Kafka (ADR-007): el playbook reemplaza <vm-mensajeria>. El publicador del Outbox lee con identity_outbox.
   Kafka__BootstrapServers: "<vm-mensajeria>:9092"
