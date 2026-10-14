@@ -123,27 +123,38 @@ public sealed class User
             }
         }
 
-        if (string.IsNullOrWhiteSpace(phone) || phone.Trim().Length is < 7 or > PhoneMaxLength)
-        {
-            errors["phone"] = [$"El teléfono es obligatorio y debe tener entre 7 y {PhoneMaxLength} caracteres."];
-        }
-
-        var documento = documentId?.Trim() ?? string.Empty;
-        if (documento.Length is < DocumentMinLength or > DocumentMaxLength)
-        {
-            errors["documentId"] = [$"El documento debe tener entre {DocumentMinLength} y {DocumentMaxLength} caracteres."];
-        }
-
-        if (specialtyId is null || specialtyId == Guid.Empty)
-        {
-            errors["specialtyId"] = ["La especialidad es obligatoria."];
-        }
-
+        AddTechnicianErrors(errors, phone, documentId, specialtyId);
         if (role is not (Roles.Tecnico or Roles.Proveedor))
         {
             errors["role"] = ["El rol debe ser 'tecnico' o 'proveedor'."];
         }
 
+        if (errors.Count > 0)
+        {
+            throw new DomainValidationException(errors);
+        }
+    }
+
+    /// <summary>
+    /// Valida el alta de un técnico en el equipo de un proveedor (RF-16, DD 8.3.14): los mismos datos del registro
+    /// de técnico, sin contraseña ni rol.
+    /// </summary>
+    public static void ValidateTeamTechnician(string? email, string? fullName, string? phone, string? documentId, Guid? specialtyId)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var correo = NormalizeEmail(email);
+        if (correo.Length is 0 or > EmailMaxLength || !IsValidEmail(correo))
+        {
+            errors["email"] = ["El correo no tiene un formato válido."];
+        }
+
+        var nombre = fullName?.Trim() ?? string.Empty;
+        if (nombre.Length is < 2 or > FullNameMaxLength)
+        {
+            errors["fullName"] = [$"El nombre debe tener entre 2 y {FullNameMaxLength} caracteres."];
+        }
+
+        AddTechnicianErrors(errors, phone, documentId, specialtyId);
         if (errors.Count > 0)
         {
             throw new DomainValidationException(errors);
@@ -196,6 +207,26 @@ public sealed class User
     {
         FailedLoginAttempts = 0;
         LockedUntil = null;
+    }
+
+    /// <summary>Teléfono y documento obligatorios y especialidad, comunes a todo técnico (RF-02, RF-16).</summary>
+    private static void AddTechnicianErrors(Dictionary<string, string[]> errors, string? phone, string? documentId, Guid? specialtyId)
+    {
+        if (string.IsNullOrWhiteSpace(phone) || phone.Trim().Length is < 7 or > PhoneMaxLength)
+        {
+            errors["phone"] = [$"El teléfono es obligatorio y debe tener entre 7 y {PhoneMaxLength} caracteres."];
+        }
+
+        var documento = documentId?.Trim() ?? string.Empty;
+        if (documento.Length is < DocumentMinLength or > DocumentMaxLength)
+        {
+            errors["documentId"] = [$"El documento debe tener entre {DocumentMinLength} y {DocumentMaxLength} caracteres."];
+        }
+
+        if (specialtyId is null || specialtyId == Guid.Empty)
+        {
+            errors["specialtyId"] = ["La especialidad es obligatoria."];
+        }
     }
 
     private static bool IsValidEmail(string email) =>

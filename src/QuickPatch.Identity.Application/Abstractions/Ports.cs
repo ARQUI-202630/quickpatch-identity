@@ -70,8 +70,19 @@ public interface ITechnicianProfileRepository
     /// <summary>Técnicos y proveedores del tenant de la sesión (RLS), del más antiguo al más reciente.</summary>
     Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Equipo de un proveedor (RN-TP4): solo los técnicos con ese <c>provider_id</c>, del más antiguo al más reciente.
+    /// <paramref name="active"/> en <c>true</c> deja los aprobados; en <c>false</c>, los demás; nulo, todos.
+    /// </summary>
+    Task<ProviderTechnicianPage> ListTeamAsync(Guid providerId, bool? active, int page, int size, CancellationToken cancellationToken);
+
     void Add(TechnicianProfile profile);
 }
+
+/// <summary>Técnico del equipo tal como lo ve el proveedor (esquema <c>ProviderTechnician</c>, contrato 1.4.0).</summary>
+public sealed record ProviderTechnicianView(Guid UserId, string FullName, Guid SpecialtyId, string VerificationStatus);
+
+public sealed record ProviderTechnicianPage(IReadOnlyList<ProviderTechnicianView> Items, int Page, int Size, int TotalItems);
 
 /// <summary>Técnico o proveedor tal como lo ve el administrador del tenant (esquema <c>AdminTechnician</c>).</summary>
 public sealed record AdminTechnicianView(

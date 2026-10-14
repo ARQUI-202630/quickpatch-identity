@@ -57,6 +57,20 @@ public sealed class TechnicianProfile
     public static TechnicianProfile CreatePending(Guid userId, Guid tenantId, Guid specialtyId, DateTimeOffset createdAt) =>
         new(userId, tenantId, null, specialtyId, Technicians.VerificationStatus.Pendiente, createdAt);
 
+    /// <summary>
+    /// Técnico que un proveedor da de alta en su equipo: hereda el tenant del proveedor y queda en <c>pendiente</c>
+    /// hasta que el admin del tenant lo apruebe, igual que cualquier técnico (RN-TP3).
+    /// </summary>
+    public static TechnicianProfile CreatePendingInTeam(Guid userId, Guid tenantId, Guid providerId, Guid specialtyId, DateTimeOffset createdAt)
+    {
+        if (providerId == Guid.Empty)
+        {
+            throw new ArgumentException("El proveedor es obligatorio.", nameof(providerId));
+        }
+
+        return new(userId, tenantId, providerId, specialtyId, Technicians.VerificationStatus.Pendiente, createdAt);
+    }
+
     /// <summary>Aprueba desde pendiente, rechazado (nueva revisión) o suspendido (reactivación); DD 8.3.13.</summary>
     public bool TryApprove()
     {
