@@ -6,6 +6,7 @@ namespace QuickPatch.Identity.Domain.Audit;
 /// </summary>
 public sealed class AuditEntry
 {
+    public const string CreateTenant = "crear_tenant";
     public const string ActivateTenant = "activar_tenant";
     public const string DeactivateTenant = "desactivar_tenant";
     public const string ApproveTechnician = "aprobar_tecnico";

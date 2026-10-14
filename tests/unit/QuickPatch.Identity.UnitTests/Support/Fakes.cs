@@ -29,7 +29,14 @@ public sealed class InMemoryIdentityStore
     public async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken)
     {
         PlatformTransactions++;
-        return await work(cancellationToken);
+        var result = await work(cancellationToken);
+        if (FailNextPlatformSaveWithDuplicateNit)
+        {
+            FailNextPlatformSaveWithDuplicateNit = false;
+            throw new DuplicateNitException();
+        }
+
+        return result;
     }
 
     public Task<IReadOnlyList<Tenant>> ListAsync(CancellationToken cancellationToken) =>
@@ -39,6 +46,14 @@ public sealed class InMemoryIdentityStore
         Task.FromResult(Tenants.SingleOrDefault(t => t.Id == tenantId));
 
     public void Add(AuditEntry entry) => Audit.Add(entry);
+
+    /// <summary>Simula una carrera con el NIT: la base rechaza el insert por <c>ux_tenants_nit</c>.</summary>
+    public bool FailNextPlatformSaveWithDuplicateNit { get; set; }
+
+    public Task<bool> NitExistsAsync(string nit, CancellationToken cancellationToken) =>
+        Task.FromResult(Tenants.Any(t => t.Nit == nit));
+
+    public void Add(Tenant tenant) => Tenants.Add(tenant);
 
     public List<User> Users { get; } = [];
 

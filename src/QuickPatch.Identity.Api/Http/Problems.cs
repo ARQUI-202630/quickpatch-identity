@@ -16,6 +16,7 @@ public static class Problems
     public const string ChannelNotConfigured = Base + "canal-sin-tenant";
     public const string NotFound = Base + "no-encontrado";
     public const string PlatformTenant = Base + "tenant-plataforma";
+    public const string NitTaken = Base + "nit-registrado";
     public const string InvalidTransition = Base + "transicion-invalida";
 
     /// <summary>Agrega <c>correlationId</c> y el tipo según el código a todo Problem Details del servicio.</summary>

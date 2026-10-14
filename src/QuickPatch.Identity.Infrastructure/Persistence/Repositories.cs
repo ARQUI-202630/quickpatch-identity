@@ -172,7 +172,15 @@ public sealed partial class PlatformUnitOfWork(IdentityDbContext db, IOptions<Pl
 #pragma warning restore EF1002
 
         var result = await work(cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505", ConstraintName: "ux_tenants_nit" })
+        {
+            throw new DuplicateNitException("Ya existe un tenant con ese NIT.", ex);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return result;
     }
@@ -193,6 +201,11 @@ public sealed class PlatformTenantRepository(IdentityDbContext db) : IPlatformTe
             .ToListAsync(cancellationToken);
         return rows.SingleOrDefault();
     }
+
+    public Task<bool> NitExistsAsync(string nit, CancellationToken cancellationToken) =>
+        db.Tenants.AnyAsync(x => x.Nit == nit, cancellationToken);
+
+    public void Add(Tenant tenant) => db.Tenants.Add(tenant);
 }
 
 public sealed class AuditLog(IdentityDbContext db) : IAuditLog
