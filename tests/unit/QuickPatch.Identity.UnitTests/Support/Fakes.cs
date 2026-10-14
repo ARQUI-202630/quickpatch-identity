@@ -120,6 +120,9 @@ public sealed class InMemoryIdentityStore
     public Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
         Task.FromResult(Users.SingleOrDefault(u => u.TenantId == currentTenant && u.Id == id));
 
+    public Task<IReadOnlyList<User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<User>>(Users.Where(u => u.TenantId == currentTenant && ids.Contains(u.Id)).ToList());
+
     public Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken) => FindByIdAsync(id, cancellationToken);
 
     public void Add(User user) => Users.Add(user);

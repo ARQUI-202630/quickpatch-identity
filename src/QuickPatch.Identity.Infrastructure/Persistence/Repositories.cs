@@ -79,6 +79,9 @@ public sealed class UserRepository(IdentityDbContext db) : IUserRepository
     public Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
         db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyList<User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        await db.Users.AsNoTracking().Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
+
     public async Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken)
     {
         var rows = await db.Users

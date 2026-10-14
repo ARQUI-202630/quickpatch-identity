@@ -29,6 +29,7 @@ public static class DependencyInjection
         services.AddScoped<SetupPasswordHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
+        services.AddScoped<LookupUsersHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();
         services.AddScoped<ListTenantsHandler>();
         services.AddScoped<CreateTenantHandler>();

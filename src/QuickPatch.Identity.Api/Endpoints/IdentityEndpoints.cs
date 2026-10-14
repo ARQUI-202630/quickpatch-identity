@@ -49,6 +49,11 @@ public sealed record VerificationReasonRequest(string? Reason);
 /// <summary>Esquema <c>TechnicianVerification</c> del contrato 1.3.0.</summary>
 public sealed record TechnicianVerificationResponse(Guid UserId, string VerificationStatus, string? Reason);
 
+/// <summary>Esquema <c>UserSummary</c> del contrato interno <c>identity-internal.v1.yaml</c>.</summary>
+public sealed record UserSummary(Guid Id, string FullName, string? Phone);
+
+public sealed record UserLookupResponse(IReadOnlyList<UserSummary> Items);
+
 /// <summary>Esquema <c>ProviderTechnicianRequest</c> del contrato 1.4.0: el registro de técnico sin contraseña ni rol.</summary>
 public sealed record ProviderTechnicianRequest(string? Email, string? FullName, string? Phone, string? DocumentId, Guid? SpecialtyId);
 
@@ -107,6 +112,11 @@ public static class IdentityEndpoints
         team.MapPost(string.Empty, CreateTeamTechnicianAsync).WithName("createProviderTechnician");
         team.MapGet(string.Empty, ListTeamAsync).WithName("listProviderTechnicians");
         team.MapPost("/{userId:guid}/invitation", RenewInvitationAsync).WithName("renewProviderTechnicianInvitation");
+
+        // Contrato interno (identity-internal.v1.yaml): solo dentro del clúster; el Ingress no publica /internal.
+        // El servicio que llama reenvía el JWT del usuario, así que el tenant sale del token (RN-U3).
+        app.MapGet("/internal/v1/users", LookupUsersAsync).WithName("lookupUsers")
+            .RequireAuthorization(policy => policy.RequireRole(Roles.Cliente, Roles.EmpresaContacto, Roles.Tecnico, Roles.AdminTenant));
         return app;
     }
 
@@ -485,6 +495,39 @@ public static class IdentityEndpoints
             var result = await handler.HandleAsync(
                 new ListTeamQuery(provider.TenantId, provider.UserId, status, page ?? 1, size ?? 20), cancellationToken);
             return Results.Ok(result);
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> LookupUsersAsync(
+        HttpContext context,
+        LookupUsersHandler handler,
+        [Microsoft.AspNetCore.Mvc.FromQuery] string[]? ids,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var actor))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        var parsed = new List<Guid>();
+        foreach (var raw in ids ?? [])
+        {
+            if (!Guid.TryParse(raw, out var id))
+            {
+                return ValidationProblem(new Dictionary<string, string[]> { ["ids"] = ["Cada identificador debe ser un UUID."] });
+            }
+
+            parsed.Add(id);
+        }
+
+        try
+        {
+            var users = await handler.HandleAsync(actor.TenantId, parsed, cancellationToken);
+            return Results.Ok(new UserLookupResponse(users.Select(u => new UserSummary(u.Id, u.FullName, u.Phone)).ToList()));
         }
         catch (DomainValidationException ex)
         {
