@@ -18,6 +18,9 @@ data:
   # Canal -> tenant (RN-U5, DEP-09). Con el mapa definido, un canal que no esté aquí recibe 503 canal-sin-tenant.
   Channel__Tenants__quickpatch-mobile: "00000000-0000-0000-0000-000000000001"
   Channel__Tenants__quickpatch-web: "00000000-0000-0000-0000-000000000001"
+  # Enlace de la invitación del equipo del proveedor (contrato 1.7.0): abre la pantalla del panel donde el técnico define su
+  # contraseña. El playbook reemplaza <host-panel> por el host del panel de cada ambiente (qa.quickpatch.internal en QA).
+  Invitations__LinkBase: "https://<host-panel>/activar"
   Bootstrap__AdminFullName: Administrador QUICKPATCH
   # Kafka (ADR-007): el playbook reemplaza <vm-mensajeria>. El publicador del Outbox lee con identity_outbox.
   Kafka__BootstrapServers: "<vm-mensajeria>:9092"
