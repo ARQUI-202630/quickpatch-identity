@@ -57,8 +57,9 @@ dotnet run --project src/QuickPatch.Identity.Api
 |`GET /internal/v1/users?ids=`: nombre y teléfono de hasta 20 usuarios del tenant del token, para que ServiceRequest arme el detalle de la solicitud (DD V4 8.3.4). Interno: el Ingress no publica `/internal` y el servicio que llama reenvía el JWT del usuario|`openapi/identity-internal.v1.yaml` 1.0.0|SCRUM-91|
 |`POST /v1/providers/me/technicians`: el proveedor da de alta un técnico en su equipo (rol `tecnico`, `provider_id` del token, tenant del proveedor y estado `pendiente`, RN-TP3) y se publica `technician.registered` con `providerId`. El técnico queda sin contraseña utilizable hasta que exista el flujo del enlace de Communication (RF-16)|`openapi/identity.v1.yaml` 1.4.0|SCRUM-36 / SCRUM-97|
 |`GET /v1/providers/me/technicians?status=activo\|inactivo`: solo el equipo del proveedor del token (RN-TP4), paginado; `activo` son los aprobados (RF-16)|`openapi/identity.v1.yaml` 1.4.0|SCRUM-36 / SCRUM-97|
+|Cuenta corporativa: `POST /v1/auth/register/company` crea en una transacción la empresa cliente (`client_companies`) y su primer `empresa_contacto` en el tenant del canal (409 `nit-registrado` o `correo-registrado`). `GET /v1/companies/me`, `GET` y `POST /v1/companies/me/users` e invitación nueva: la empresa sale del usuario que llama (RN-CC3) y el usuario agregado define su contraseña con la invitación (RN-CC4). El token del `empresa_contacto` lleva `company_id` (RF-06)|`openapi/identity.v1.yaml` 1.8.0|SCRUM-26 / SCRUM-66|
 
-> El registro de técnicos, el `FOR UPDATE` del login, la validación de tenant activo en el registro y el entorno local con Docker vienen del trabajo de José Castiblanco (@joseval29). Quedan pendientes: registro de empresa (`client_companies`) y refresh tokens.
+> El registro de técnicos, el `FOR UPDATE` del login, la validación de tenant activo en el registro y el entorno local con Docker vienen del trabajo de José Castiblanco (@joseval29). Queda pendiente: refresh tokens.
 
 ## Eventos
 
@@ -135,7 +136,7 @@ Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del p
 
 ## Despliegue
 
-- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`, `/v1/platform`, `/v1/admin/technicians`, `/v1/providers`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
+- `deploy/k8s/identity.yaml`: ConfigMap, Deployment, Service e Ingress (`/v1/auth`, `/v1/users`, `/v1/platform`, `/v1/admin/technicians`, `/v1/providers`, `/v1/companies`) para k3s. Las migraciones se aplican con un *migration bundle* de EF Core (`/app/efbundle`, incluido en la imagen) como init container, con el rol `identity_migrator`.
 - Secretos, primer despliegue y alta del tenant: `deploy/k8s/README.md`.
 - **Administradores iniciales:** si `Bootstrap__AdminEmail`/`Bootstrap__AdminPassword` o `Bootstrap__PlatformAdminEmail`/`Bootstrap__PlatformAdminPassword` están configurados (secreto), Identity crea al arrancar el `admin_tenant` o el `admin_plataforma` del tenant del canal cuando todavía no existen. Ningún endpoint registra administradores.
 - **Gestión de tenants (RF-21, contratos 1.2.0 y 1.5.0):** `GET`, `POST` (crear, NIT único: 409 `nit-registrado`) y `PATCH /v1/platform/tenants/{id}`, solo `admin_plataforma`. Corren en una transacción que adopta `identity_platform` (`SET LOCAL ROLE`, BYPASSRLS) y registran el cambio en `audit_logs` (DD 10.4). `identity_app` es miembro de ese rol sin heredarlo (`db/roles.sql`).

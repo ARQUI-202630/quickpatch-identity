@@ -1,4 +1,5 @@
 using QuickPatch.Identity.Domain.Audit;
+using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -82,8 +83,32 @@ public interface IPasswordSetupTokenRepository
     /// <summary>Si el usuario ya definió su contraseña con alguna invitación.</summary>
     Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken);
 
+    /// <summary>Si el usuario tiene alguna invitación, usada o no. Quien no tiene ninguna definió su contraseña al registrarse.</summary>
+    Task<bool> HasAnyAsync(Guid userId, CancellationToken cancellationToken);
+
     void Add(PasswordSetupToken token);
 }
+
+/// <summary>Empresas cliente (<c>client_companies</c>, DD 5.19), bajo RLS.</summary>
+public interface IClientCompanyRepository
+{
+    Task<ClientCompany?> FindAsync(Guid companyId, CancellationToken cancellationToken);
+
+    Task<bool> NitExistsAsync(string nit, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Usuarios de la empresa, del más antiguo al más reciente. <c>PasswordDefined</c> es falso mientras el usuario tenga
+    /// invitaciones y no haya usado ninguna.
+    /// </summary>
+    Task<CompanyUserPage> ListUsersAsync(Guid companyId, int page, int size, CancellationToken cancellationToken);
+
+    void Add(ClientCompany company);
+}
+
+/// <summary>Usuario de la empresa tal como lo ve otro usuario de ella (esquema <c>CompanyUser</c>, contrato 1.8.0).</summary>
+public sealed record CompanyUserView(Guid UserId, string Email, string FullName, string? Phone, bool PasswordDefined, DateTimeOffset CreatedAt);
+
+public sealed record CompanyUserPage(IReadOnlyList<CompanyUserView> Items, int Page, int Size, int TotalItems);
 
 public interface ITechnicianProfileRepository
 {
@@ -135,7 +160,7 @@ public interface IPasswordHasher
     void SimulateVerify(string password);
 }
 
-/// <summary>Emite el JWT RS256 con <c>sub</c>, <c>tenant_id</c> y <c>role</c>.</summary>
+/// <summary>Emite el JWT RS256 con <c>sub</c>, <c>tenant_id</c> y <c>role</c>, y <c>company_id</c> para <c>empresa_contacto</c>.</summary>
 public interface ITokenIssuer
 {
     IssuedToken Issue(User user);
@@ -176,6 +201,25 @@ public sealed class DuplicateNitException : Exception
     }
 
     public DuplicateNitException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>Ya existe una empresa cliente con ese NIT en el tenant (unicidad <c>ux_client_companies_tenant_nit</c>, RN-CC1).</summary>
+public sealed class DuplicateCompanyNitException : Exception
+{
+    public DuplicateCompanyNitException()
+        : base("Ya existe una empresa con ese NIT en el tenant.")
+    {
+    }
+
+    public DuplicateCompanyNitException(string message)
+        : base(message)
+    {
+    }
+
+    public DuplicateCompanyNitException(string message, Exception innerException)
         : base(message, innerException)
     {
     }

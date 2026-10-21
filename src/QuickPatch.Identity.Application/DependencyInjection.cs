@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Companies;
 using QuickPatch.Identity.Application.Platform;
 using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Application.Users;
@@ -27,6 +28,11 @@ public static class DependencyInjection
         services.AddScoped<ListTeamHandler>();
         services.AddScoped<RenewInvitationHandler>();
         services.AddScoped<SetupPasswordHandler>();
+        services.AddScoped<RegisterCompanyHandler>();
+        services.AddScoped<GetMyCompanyHandler>();
+        services.AddScoped<CreateCompanyUserHandler>();
+        services.AddScoped<ListCompanyUsersHandler>();
+        services.AddScoped<RenewCompanyInvitationHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
         services.AddScoped<LookupUsersHandler>();

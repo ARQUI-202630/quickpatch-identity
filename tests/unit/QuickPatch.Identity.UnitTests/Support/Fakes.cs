@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Domain.Audit;
+using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -11,7 +12,7 @@ namespace QuickPatch.Identity.UnitTests.Support;
 /// <summary>Puertos en memoria. Emula RLS: solo se ven los datos del tenant de la transacción en curso.</summary>
 public sealed class InMemoryIdentityStore
     : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog, IOutbox,
-      IPasswordSetupTokenRepository
+      IPasswordSetupTokenRepository, IClientCompanyRepository
 {
     private Guid? currentTenant;
 
@@ -71,7 +72,39 @@ public sealed class InMemoryIdentityStore
     public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
         Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId && i.UsedAt is not null));
 
+    public Task<bool> HasAnyAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId));
+
     public void Add(PasswordSetupToken token) => Invitations.Add(token);
+
+    public List<ClientCompany> Companies { get; } = [];
+
+    /// <summary>Simula una carrera con el NIT de la empresa: la base rechaza el insert por (tenant_id, nit).</summary>
+    public bool FailNextSaveWithDuplicateCompanyNit { get; set; }
+
+    Task<ClientCompany?> IClientCompanyRepository.FindAsync(Guid companyId, CancellationToken cancellationToken) =>
+        Task.FromResult(Companies.SingleOrDefault(c => c.TenantId == currentTenant && c.Id == companyId));
+
+    Task<bool> IClientCompanyRepository.NitExistsAsync(string nit, CancellationToken cancellationToken) =>
+        Task.FromResult(Companies.Any(c => c.TenantId == currentTenant && c.Nit == nit));
+
+    public Task<CompanyUserPage> ListUsersAsync(Guid companyId, int page, int size, CancellationToken cancellationToken)
+    {
+        var rows = Users
+            .Where(u => u.TenantId == currentTenant && u.CompanyId == companyId)
+            .OrderBy(u => u.CreatedAt)
+            .Select(u => new CompanyUserView(
+                u.Id,
+                u.Email,
+                u.FullName,
+                u.Phone,
+                !Invitations.Any(i => i.UserId == u.Id) || Invitations.Any(i => i.UserId == u.Id && i.UsedAt is not null),
+                u.CreatedAt))
+            .ToList();
+        return Task.FromResult(new CompanyUserPage([.. rows.Skip((page - 1) * size).Take(size)], page, size, rows.Count));
+    }
+
+    public void Add(ClientCompany company) => Companies.Add(company);
 
     /// <summary>Simula una carrera con el documento: la base rechaza el insert por (tenant_id, document_id).</summary>
     public bool FailNextSaveWithDuplicateDocument { get; set; }
@@ -95,6 +128,12 @@ public sealed class InMemoryIdentityStore
             {
                 FailNextSaveWithDuplicateDocument = false;
                 throw new DuplicateDocumentException();
+            }
+
+            if (FailNextSaveWithDuplicateCompanyNit)
+            {
+                FailNextSaveWithDuplicateCompanyNit = false;
+                throw new DuplicateCompanyNitException();
             }
 
             return result;

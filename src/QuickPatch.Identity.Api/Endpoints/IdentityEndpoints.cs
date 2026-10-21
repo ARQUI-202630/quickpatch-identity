@@ -23,11 +23,14 @@ public sealed record RegisterTechnicianRequest(
 
 public sealed record LoginRequest(string? Email, string? Password);
 
-/// <summary>Esquema <c>UserProfile</c> del contrato; <see cref="VerificationStatus"/> solo para técnicos y proveedores.</summary>
-public sealed record UserProfile(Guid Id, string Email, string FullName, string Role, string? Phone, string? VerificationStatus)
+/// <summary>
+/// Esquema <c>UserProfile</c> del contrato; <see cref="VerificationStatus"/> solo para técnicos y proveedores y
+/// <see cref="CompanyId"/> solo para <c>empresa_contacto</c> (1.8.0).
+/// </summary>
+public sealed record UserProfile(Guid Id, string Email, string FullName, string Role, string? Phone, string? VerificationStatus, Guid? CompanyId)
 {
     public static UserProfile From(User user, TechnicianProfile? profile = null) =>
-        new(user.Id, user.Email, user.FullName, user.Role, user.Phone, profile?.VerificationStatus);
+        new(user.Id, user.Email, user.FullName, user.Role, user.Phone, profile?.VerificationStatus, user.CompanyId);
 }
 
 public sealed record LoginResponse(string AccessToken, string TokenType, int ExpiresIn, UserProfile User);
