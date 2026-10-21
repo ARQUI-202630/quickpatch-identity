@@ -24,7 +24,9 @@ public class UsersLookupTests(IdentityApiFactory factory) : IClassFixture<Identi
 
     private HttpClient ClientAs(string role, Guid? tenant = null)
     {
-        var user = User.Create(tenant ?? IdentityApiFactory.ActiveTenant, $"{role}{Guid.NewGuid():N}@quickpatch.co", "hash", role, "Persona", null, Now);
+        var user = User.Create(
+            tenant ?? IdentityApiFactory.ActiveTenant, $"{role}{Guid.NewGuid():N}@quickpatch.co", "hash", role, "Persona", null, Now,
+            companyId: role == Roles.EmpresaContacto ? Guid.NewGuid() : null);
         var token = factory.Services.GetRequiredService<ITokenIssuer>().Issue(user).AccessToken;
         var client = factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);

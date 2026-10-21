@@ -34,7 +34,7 @@ public sealed class BCryptPasswordHasher(IOptions<PasswordOptions> options) : IP
 
 /// <summary>
 /// Firma el JWT con RS256 (llave privada solo en Identity). Claims: <c>sub</c>, <c>tenant_id</c>, <c>role</c>,
-/// <c>iss</c>, <c>aud</c>, <c>exp</c> y <c>jti</c>.
+/// <c>iss</c>, <c>aud</c>, <c>exp</c> y <c>jti</c>; para <c>empresa_contacto</c>, también <c>company_id</c> (contrato 1.8.0).
 /// </summary>
 public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
 {
@@ -75,6 +75,18 @@ public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
     {
         ArgumentNullException.ThrowIfNull(user);
         var now = clock.GetUtcNow();
+        var claims = new Dictionary<string, object>
+        {
+            ["sub"] = user.Id.ToString(),
+            ["tenant_id"] = user.TenantId.ToString(),
+            ["role"] = user.Role,
+            ["jti"] = Guid.NewGuid().ToString(),
+        };
+        if (user.CompanyId is { } companyId)
+        {
+            claims["company_id"] = companyId.ToString();
+        }
+
         var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = options.Issuer,
@@ -83,13 +95,7 @@ public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
             NotBefore = now.UtcDateTime,
             Expires = now.Add(options.Lifetime).UtcDateTime,
             SigningCredentials = credentials,
-            Claims = new Dictionary<string, object>
-            {
-                ["sub"] = user.Id.ToString(),
-                ["tenant_id"] = user.TenantId.ToString(),
-                ["role"] = user.Role,
-                ["jti"] = Guid.NewGuid().ToString(),
-            },
+            Claims = claims,
         });
 
         return new IssuedToken(token, (int)options.Lifetime.TotalSeconds);

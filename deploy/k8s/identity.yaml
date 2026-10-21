@@ -120,3 +120,4 @@ spec:
           - { path: /v1/platform, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/admin/technicians, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/providers, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          - { path: /v1/companies, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }

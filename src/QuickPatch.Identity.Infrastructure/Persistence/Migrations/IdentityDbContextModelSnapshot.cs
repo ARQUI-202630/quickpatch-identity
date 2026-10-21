@@ -65,6 +65,52 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("audit_logs", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Companies.ClientCompany", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContactEmail")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("contact_phone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("LegalName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("legal_name");
+
+                    b.Property<string>("Nit")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("nit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Nit")
+                        .IsUnique()
+                        .HasDatabaseName("ux_client_companies_tenant_nit");
+
+                    b.ToTable("client_companies", (string)null);
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Technicians.TechnicianProfile", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -210,6 +256,10 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -262,6 +312,10 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_users_company")
+                        .HasFilter("company_id IS NOT NULL");
+
                     b.HasIndex("TenantId", "DocumentId")
                         .IsUnique()
                         .HasDatabaseName("ux_users_tenant_document")
@@ -274,7 +328,10 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Role")
                         .HasDatabaseName("ix_users_tenant_role");
 
-                    b.ToTable("users", (string)null);
+                    b.ToTable("users", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_users_company_role", "(role = 'empresa_contacto') = (company_id IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Messaging.OutboxEventRecord", b =>
@@ -323,6 +380,15 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("outbox_events", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Companies.ClientCompany", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Technicians.TechnicianProfile", b =>
                 {
                     b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
@@ -361,6 +427,12 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("QuickPatch.Identity.Domain.Users.User", b =>
                 {
+                    b.HasOne("QuickPatch.Identity.Domain.Companies.ClientCompany", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_client_companies");
+
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")

@@ -53,6 +53,7 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 });
 
 app.MapIdentityEndpoints();
+app.MapCompanyEndpoints();
 
 app.Run();
 

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
 using QuickPatch.Identity.Domain.Audit;
+using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -14,6 +15,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
     public DbSet<Tenant> Tenants => Set<Tenant>();
 
     public DbSet<User> Users => Set<User>();
+
+    public DbSet<ClientCompany> ClientCompanies => Set<ClientCompany>();
 
     public DbSet<TechnicianProfile> TechnicianProfiles => Set<TechnicianProfile>();
 
@@ -50,6 +53,7 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.Property(x => x.FullName).HasColumnName("full_name").HasMaxLength(User.FullNameMaxLength);
             e.Property(x => x.DocumentId).HasColumnName("document_id").HasMaxLength(User.DocumentMaxLength);
             e.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(User.PhoneMaxLength);
+            e.Property(x => x.CompanyId).HasColumnName("company_id");
             e.Property(x => x.FailedLoginAttempts).HasColumnName("failed_login_attempts");
             e.Property(x => x.LockedUntil).HasColumnName("locked_until");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -57,6 +61,27 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.HasIndex(x => new { x.TenantId, x.Email }).IsUnique().HasDatabaseName("ux_users_tenant_email");
             e.HasIndex(x => new { x.TenantId, x.DocumentId }).IsUnique().HasFilter("document_id IS NOT NULL").HasDatabaseName("ux_users_tenant_document");
             e.HasIndex(x => new { x.TenantId, x.Role }).HasDatabaseName("ix_users_tenant_role");
+
+            // Empresa cliente (DD 5.19, RF-06): FK física y RN-CC2 en la base.
+            e.HasOne<ClientCompany>().WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("fk_users_client_companies");
+            e.HasIndex(x => x.CompanyId).HasDatabaseName("ix_users_company").HasFilter("company_id IS NOT NULL");
+            e.ToTable(t => t.HasCheckConstraint("ck_users_company_role", "(role = 'empresa_contacto') = (company_id IS NOT NULL)"));
+        });
+
+        modelBuilder.Entity<ClientCompany>(e =>
+        {
+            e.ToTable("client_companies");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.LegalName).HasColumnName("legal_name").HasMaxLength(ClientCompany.LegalNameMaxLength);
+            e.Property(x => x.Nit).HasColumnName("nit").HasMaxLength(ClientCompany.NitMaxLength);
+            e.Property(x => x.ContactEmail).HasColumnName("contact_email").HasMaxLength(ClientCompany.ContactEmailMaxLength);
+            e.Property(x => x.ContactPhone).HasColumnName("contact_phone").HasMaxLength(ClientCompany.ContactPhoneMaxLength);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.TenantId, x.Nit }).IsUnique().HasDatabaseName("ux_client_companies_tenant_nit");
         });
 
         modelBuilder.Entity<TechnicianProfile>(e =>
