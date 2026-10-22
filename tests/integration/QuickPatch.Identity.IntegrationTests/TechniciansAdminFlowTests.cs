@@ -88,9 +88,14 @@ public class TechniciansAdminFlowTests(IdentityEnvironment env)
         Assert.Equal(correlation.ToString(), await env.ScalarAdminAsync(
             "SELECT metadata->>'correlationId' FROM audit_logs WHERE target_id = @u AND action = 'suspender_tecnico'", ("u", id)));
 
+        // Esta prueba levanta su propia app además de la del entorno, y cada una corre su publicador del Outbox: con SKIP
+        // LOCKED cada uno puede tomar un evento y publicarlo antes que el otro, así que el orden en Kafka no está garantizado
+        // aquí. Lo que importa es que lleguen los dos y que la suspensión diga de qué estado venía.
         var eventos = env.ConsumeAll("technician.verification-changed", id.ToString(), 2);
-        Assert.Equal(["aprobado", "suspendido"], eventos.Select(e => e.GetProperty("data").GetProperty("verificationStatus").GetString()));
-        var ultimo = eventos[^1];
+        Assert.Equal(
+            ["aprobado", "suspendido"],
+            eventos.Select(e => e.GetProperty("data").GetProperty("verificationStatus").GetString()).Order(StringComparer.Ordinal));
+        var ultimo = eventos.Single(e => e.GetProperty("data").GetProperty("verificationStatus").GetString() == "suspendido");
         Assert.Equal(correlation, ultimo.GetProperty("correlationId").GetGuid());
         Assert.Equal("aprobado", ultimo.GetProperty("data").GetProperty("previousStatus").GetString());
         Assert.Equal("Reclamos repetidos por incumplimiento.", ultimo.GetProperty("data").GetProperty("reason").GetString());
