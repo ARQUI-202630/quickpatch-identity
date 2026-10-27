@@ -70,6 +70,17 @@ public static class DependencyInjection
 
             services.AddSingleton<OutboxPublisher>();
             services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher>());
+
+            // Reputación que publica Ranking (ADR-027): se proyecta en technician_profiles.
+            services.AddSingleton(_ => new ConsumerBuilder<string, string>(new ConsumerConfig
+            {
+                BootstrapServers = kafka.BootstrapServers,
+                GroupId = kafka.ConsumerGroupId,
+                EnableAutoCommit = false,
+                AutoOffsetReset = AutoOffsetReset.Earliest,
+            }).Build());
+            services.AddSingleton<ReputationChangedConsumer>();
+            services.AddHostedService(sp => sp.GetRequiredService<ReputationChangedConsumer>());
         }
 
         return services;

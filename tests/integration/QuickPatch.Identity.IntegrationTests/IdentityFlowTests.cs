@@ -69,6 +69,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
             await admin.CreateTopicsAsync([
                 new TopicSpecification { Name = "technician.registered", NumPartitions = 1, ReplicationFactor = 1 },
                 new TopicSpecification { Name = "technician.verification-changed", NumPartitions = 1, ReplicationFactor = 1 },
+                new TopicSpecification { Name = "ranking.technician-reputation-changed", NumPartitions = 1, ReplicationFactor = 1 },
             ]);
         }
 
@@ -80,6 +81,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
             b.UseSetting("Channel:TenantId", ActiveTenant.ToString());
             b.UseSetting("DevelopmentUsers:Enabled", "false");
             b.UseSetting("Kafka:BootstrapServers", KafkaServers);
+            b.UseSetting("Kafka:ConsumerGroupId", "identity-pruebas");
             b.UseSetting("Outbox:PublisherRole", "identity_outbox");
             b.UseSetting("Outbox:PollInterval", "00:00:00.200");
         });

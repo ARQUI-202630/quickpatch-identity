@@ -49,8 +49,20 @@ public sealed class TechnicianProfile
 
     public string? VerificationReason { get; private set; }
 
-    /// <summary>Proyección local del promedio; su cálculo corresponde a Ranking (SAD, D3).</summary>
-    public decimal? AverageRating { get; }
+    /// <summary>
+    /// Proyección local del promedio; su cálculo corresponde a Ranking (SAD, D3), que lo publica en
+    /// <c>ranking.technician-reputation-changed</c> (ADR-027). Nulo mientras el técnico no tenga calificaciones.
+    /// </summary>
+    public decimal? AverageRating { get; private set; }
+
+    /// <summary>Cuántas calificaciones tiene el técnico según la última reputación aplicada (ADR-027).</summary>
+    public int RatingCount { get; private set; }
+
+    /// <summary>Marca de reputación baja que calcula Ranking (AC9-E2). No suspende al técnico: decide el Admin (RF-20).</summary>
+    public bool LowReputation { get; private set; }
+
+    /// <summary><c>changedAt</c> de la última reputación aplicada; los eventos más viejos se descartan (ADR-017).</summary>
+    public DateTimeOffset? ReputationChangedAt { get; private set; }
 
     public DateTimeOffset CreatedAt { get; }
 
@@ -69,6 +81,30 @@ public sealed class TechnicianProfile
         }
 
         return new(userId, tenantId, providerId, specialtyId, Technicians.VerificationStatus.Pendiente, createdAt);
+    }
+
+    /// <summary>
+    /// Aplica la reputación que publicó Ranking (ADR-027, decisión 4). Devuelve false si ya se aplicó una igual o más
+    /// reciente (<paramref name="changedAt"/> no es posterior): así un evento repetido o atrasado no deja un promedio viejo.
+    /// </summary>
+    public bool TryApplyReputation(decimal averageRating, int ratingCount, bool lowReputation, DateTimeOffset changedAt)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(ratingCount);
+        if (averageRating is < 0 or > 5)
+        {
+            throw new ArgumentOutOfRangeException(nameof(averageRating), "El promedio debe estar entre 0 y 5.");
+        }
+
+        if (ReputationChangedAt is { } applied && changedAt <= applied)
+        {
+            return false;
+        }
+
+        AverageRating = ratingCount == 0 ? null : averageRating;
+        RatingCount = ratingCount;
+        LowReputation = lowReputation;
+        ReputationChangedAt = changedAt;
+        return true;
     }
 
     /// <summary>Aprueba desde pendiente, rechazado (nueva revisión) o suspendido (reactivación); DD 8.3.13.</summary>

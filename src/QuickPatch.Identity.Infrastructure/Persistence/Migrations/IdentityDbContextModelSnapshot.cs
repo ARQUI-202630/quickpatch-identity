@@ -17,7 +17,7 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -126,9 +126,21 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("LowReputation")
+                        .HasColumnType("boolean")
+                        .HasColumnName("low_reputation");
+
                     b.Property<Guid?>("ProviderId")
                         .HasColumnType("uuid")
                         .HasColumnName("provider_id");
+
+                    b.Property<int>("RatingCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("rating_count");
+
+                    b.Property<DateTimeOffset?>("ReputationChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reputation_changed_at");
 
                     b.Property<Guid>("SpecialtyId")
                         .HasColumnType("uuid")
