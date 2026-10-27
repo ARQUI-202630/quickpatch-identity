@@ -34,6 +34,24 @@ public sealed record TechnicianVerificationChangedData(
     DateTimeOffset UpdatedAt);
 
 /// <summary>
+/// <c>data</c> de <c>ranking.technician-reputation-changed</c> v1 (ADR-027, decisión 4): la reputación que calculó Ranking.
+/// </summary>
+public sealed record TechnicianReputationChangedData(
+    Guid TechnicianId,
+    decimal AverageRating,
+    int RatingCount,
+    bool LowReputation,
+    DateTimeOffset ChangedAt);
+
+/// <summary>Eventos que Identity consume.</summary>
+public static class ConsumedEvents
+{
+    public const string TechnicianReputationChanged = "ranking.technician-reputation-changed";
+
+    public static JsonSerializerOptions Json { get; } = new(JsonSerializerDefaults.Web);
+}
+
+/// <summary>
 /// <c>technician.registered</c>: un técnico o proveedor se registró y quedó pendiente (RF-02). Lleva el estado completo
 /// de la proyección que mantiene Matching (P-01) con <c>updatedAt</c> como versión (ADR-017).
 /// </summary>

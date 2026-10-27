@@ -21,6 +21,9 @@ public sealed class KafkaOptions
 
     public string BootstrapServers { get; set; } = string.Empty;
 
+    /// <summary>Grupo del consumidor de <c>ranking.technician-reputation-changed</c> (ADR-027).</summary>
+    public string ConsumerGroupId { get; set; } = "identity-service";
+
     public bool Enabled => !string.IsNullOrWhiteSpace(BootstrapServers);
 }
 

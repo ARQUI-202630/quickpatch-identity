@@ -70,6 +70,8 @@ dotnet run --project src/QuickPatch.Identity.Api
 
 Se publican con **Transactional Outbox** (ADR-007): el evento se guarda en `outbox_events` en la misma transacción del registro y un `BackgroundService` lo envía a Kafka (topic = tipo del evento, cabeceras `eventId` y `eventType`) y marca `published_at`. Si Kafka falla, suma un intento y lo reintenta en la siguiente vuelta. El servicio solo **inserta** en `outbox_events` con el tenant de su sesión (RLS); el publicador lee los de todos los tenants adoptando `identity_outbox` (`SET LOCAL ROLE`, BYPASSRLS). Sin `Kafka__BootstrapServers` (desarrollo local) los eventos se quedan en la tabla sin publicar.
 
+**Consume** `ranking.technician-reputation-changed` v1 (ADR-027, SCRUM-498): proyecta en `technician_profiles` el promedio (`average_rating`), la cantidad de calificaciones (`rating_count`) y la marca de reputación baja (`low_reputation`, AC9-E2) que calcula Ranking. Corre bajo el tenant del evento con RLS y bloquea el perfil; descarta lo que tenga `changedAt` igual o anterior al último aplicado (`reputation_changed_at`, ADR-017), así que es idempotente. El grupo de consumidores es `Kafka:ConsumerGroupId` (por defecto `identity-service`). Exponer la reputación en la API del panel es un cambio de contrato pendiente (SCRUM-497).
+
 ## Seguridad
 
 - **Token:** JWT RS256 con `sub`, `tenant_id`, `role`, `iss`, `aud`, `exp` y `jti`. Solo Identity tiene la llave privada (`Jwt__PrivateKeyPem`, secreto de k3s); los demás servicios reciben la pública en `Jwt__PublicKeyPem`. Para obtenerla: `openssl pkey -in privada.pem -pubout`.

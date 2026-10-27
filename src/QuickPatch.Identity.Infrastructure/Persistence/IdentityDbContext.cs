@@ -95,6 +95,9 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.Property(x => x.VerificationStatus).HasColumnName("verification_status").HasMaxLength(25);
             e.Property(x => x.VerificationReason).HasColumnName("verification_reason").HasColumnType("text");
             e.Property(x => x.AverageRating).HasColumnName("average_rating").HasPrecision(2, 1);
+            e.Property(x => x.RatingCount).HasColumnName("rating_count");
+            e.Property(x => x.LowReputation).HasColumnName("low_reputation");
+            e.Property(x => x.ReputationChangedAt).HasColumnName("reputation_changed_at");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasOne<User>().WithOne().HasForeignKey<TechnicianProfile>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);

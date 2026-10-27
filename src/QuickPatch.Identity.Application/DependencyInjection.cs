@@ -24,6 +24,7 @@ public static class DependencyInjection
         services.AddScoped<RegisterTechnicianHandler>();
         services.AddScoped<ListTechniciansHandler>();
         services.AddScoped<ChangeVerificationHandler>();
+        services.AddScoped<ApplyReputationHandler>();
         services.AddScoped<CreateTeamTechnicianHandler>();
         services.AddScoped<ListTeamHandler>();
         services.AddScoped<RenewInvitationHandler>();
