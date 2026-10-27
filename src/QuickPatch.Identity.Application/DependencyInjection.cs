@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<RenewCompanyInvitationHandler>();
         services.AddScoped<LoginHandler>();
         services.AddScoped<GetCurrentUserHandler>();
+        services.AddScoped<UpdateCurrentUserHandler>();
         services.AddScoped<LookupUsersHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();
         services.AddScoped<ListTenantsHandler>();

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 using Microsoft.Extensions.Options;
 
@@ -91,6 +92,7 @@ public static class IdentityEndpoints
         app.MapPost("/v1/auth/password/setup", SetupPasswordAsync).WithName("setupPassword").AllowAnonymous();
         app.MapPost("/v1/auth/login", LoginAsync).WithName("login").AllowAnonymous();
         app.MapGet("/v1/users/me", GetCurrentUserAsync).WithName("getCurrentUser").RequireAuthorization();
+        app.MapPatch("/v1/users/me", UpdateCurrentUserAsync).WithName("updateCurrentUser").RequireAuthorization();
 
         // Operaciones de plataforma (RF-21, DD 10.4): solo admin_plataforma (RN-U6).
         app.MapGet("/v1/platform/tenants", ListTenantsAsync).WithName("listTenants")
@@ -240,6 +242,74 @@ public static class IdentityEndpoints
         }
 
         var current = await handler.HandleAsync(authenticated.TenantId, authenticated.UserId, cancellationToken);
+        return current is null
+            ? Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El usuario del token ya no existe.")
+            : Results.Ok(UserProfile.From(current.User, current.Profile));
+    }
+
+    /// <summary>
+    /// <c>PATCH /v1/users/me</c> (identity 1.9.0, SCRUM-611). El cuerpo se lee como JSON para distinguir un
+    /// <c>phone</c> ausente (no cambia) de uno nulo (lo quita). Solo admite <c>fullName</c> y <c>phone</c>: cualquier otro
+    /// campo, como <c>email</c>, <c>role</c> o <c>tenantId</c>, es un 400 (<c>additionalProperties: false</c>).
+    /// </summary>
+    private static async Task<IResult> UpdateCurrentUserAsync(
+        JsonElement body, HttpContext context, UpdateCurrentUserHandler handler, CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var authenticated))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        var errors = new Dictionary<string, string[]>();
+        string? fullName = null;
+        string? phone = null;
+        var phoneProvided = false;
+        if (body.ValueKind != JsonValueKind.Object || !body.EnumerateObject().Any())
+        {
+            errors["body"] = ["Envía al menos fullName o phone."];
+        }
+        else
+        {
+            foreach (var property in body.EnumerateObject())
+            {
+                switch (property.Name)
+                {
+                    case "fullName" when property.Value.ValueKind == JsonValueKind.String:
+                        fullName = property.Value.GetString();
+                        break;
+                    case "fullName":
+                        errors["fullName"] = ["El nombre debe ser un texto."];
+                        break;
+                    case "phone" when property.Value.ValueKind is JsonValueKind.String or JsonValueKind.Null:
+                        phoneProvided = true;
+                        phone = property.Value.ValueKind == JsonValueKind.Null ? null : property.Value.GetString();
+                        break;
+                    case "phone":
+                        errors["phone"] = ["El teléfono debe ser un texto o null."];
+                        break;
+                    default:
+                        errors[property.Name] = ["Este campo no se puede editar."];
+                        break;
+                }
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return ValidationProblem(errors);
+        }
+
+        CurrentUser? current;
+        try
+        {
+            current = await handler.HandleAsync(
+                new UpdateCurrentUserCommand(authenticated.TenantId, authenticated.UserId, fullName, phoneProvided, phone), cancellationToken);
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+
         return current is null
             ? Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El usuario del token ya no existe.")
             : Results.Ok(UserProfile.From(current.User, current.Profile));
