@@ -55,9 +55,9 @@ public sealed class User
 
     public string Role { get; }
 
-    public string FullName { get; }
+    public string FullName { get; private set; }
 
-    public string? Phone { get; }
+    public string? Phone { get; private set; }
 
     /// <summary>Documento de identidad; obligatorio para técnicos y proveedores y único por tenant (DD 5.2).</summary>
     public string? DocumentId { get; }
@@ -70,6 +70,56 @@ public sealed class User
     public DateTimeOffset? LockedUntil { get; private set; }
 
     public DateTimeOffset CreatedAt { get; }
+
+    /// <summary>Longitud mínima del teléfono al editar el perfil (contrato identity 1.9.0).</summary>
+    public const int PhoneMinLength = 7;
+
+    /// <summary>
+    /// Edita el perfil propio (<c>PATCH /v1/users/me</c>, identity 1.9.0, SCRUM-611): solo el nombre y el teléfono. El
+    /// correo, el rol, el tenant y el estado de verificación no cambian por aquí. <paramref name="fullName"/> nulo deja el
+    /// nombre como está; con <paramref name="phoneProvided"/> en true, <paramref name="phone"/> nulo quita el teléfono,
+    /// salvo para técnicos y proveedores, que lo tienen obligatorio (RF-02).
+    /// </summary>
+    public void UpdateProfile(string? fullName, bool phoneProvided, string? phone)
+    {
+        var errors = new Dictionary<string, string[]>();
+        var nombre = fullName?.Trim();
+        if (fullName is not null && nombre!.Length is < 2 or > FullNameMaxLength)
+        {
+            errors["fullName"] = [$"El nombre debe tener entre 2 y {FullNameMaxLength} caracteres."];
+        }
+
+        var telefono = phone?.Trim();
+        if (phoneProvided)
+        {
+            if (telefono is null)
+            {
+                if (Role is Roles.Tecnico or Roles.Proveedor)
+                {
+                    errors["phone"] = ["El teléfono es obligatorio para técnicos y proveedores."];
+                }
+            }
+            else if (telefono.Length is < PhoneMinLength or > PhoneMaxLength)
+            {
+                errors["phone"] = [$"El teléfono debe tener entre {PhoneMinLength} y {PhoneMaxLength} caracteres."];
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            throw new DomainValidationException(errors);
+        }
+
+        if (nombre is not null)
+        {
+            FullName = nombre;
+        }
+
+        if (phoneProvided)
+        {
+            Phone = telefono;
+        }
+    }
 
     /// <summary>Normaliza el correo para que la unicidad por tenant (RN-U1) no dependa de mayúsculas.</summary>
     public static string NormalizeEmail(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();
