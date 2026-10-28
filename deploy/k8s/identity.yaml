@@ -80,13 +80,17 @@ spec:
               valueFrom: { secretKeyRef: { name: identity-secretos, key: platform-admin-email, optional: true } }
             - name: Bootstrap__PlatformAdminPassword
               valueFrom: { secretKeyRef: { name: identity-secretos, key: platform-admin-password, optional: true } }
+          # timeoutSeconds: sin él Kubernetes espera 1 s; bajo carga en QA (28 oct 2026, k6) las sondas daban
+          # «context deadline exceeded» y el liveness reiniciaba el pod tras 3 fallos seguidos (SCRUM-515).
           readinessProbe:
             httpGet: { path: /health/ready, port: http }
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet: { path: /health/live, port: http }
             initialDelaySeconds: 10
             periodSeconds: 20
+            timeoutSeconds: 3
           # Pendiente de medición (Documento de Infraestructura, 5.6); límite inicial dentro del presupuesto de VM3.
           resources:
             requests: { cpu: 100m, memory: 160Mi }
