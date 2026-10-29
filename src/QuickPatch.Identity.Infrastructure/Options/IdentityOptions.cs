@@ -45,6 +45,11 @@ public sealed class InvitationOptions
     public string LinkBase { get; set; } = "https://quickpatch.internal/activar";
 
     public string LinkFor(string token) => $"{LinkBase.TrimEnd('#')}#token={token}";
+
+    /// <summary>Página o enlace profundo de la app que abre la pantalla de la contraseña nueva (recuperación, contrato 1.10.0).</summary>
+    public string RecoveryLinkBase { get; set; } = "https://quickpatch.internal/recuperar";
+
+    public string RecoveryLinkFor(string token) => $"{RecoveryLinkBase.TrimEnd('#')}#token={token}";
 }
 
 /// <summary>

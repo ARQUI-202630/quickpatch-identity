@@ -12,7 +12,7 @@ namespace QuickPatch.Identity.UnitTests.Support;
 /// <summary>Puertos en memoria. Emula RLS: solo se ven los datos del tenant de la transacción en curso.</summary>
 public sealed class InMemoryIdentityStore
     : ITenantUnitOfWork, ITenantRepository, IUserRepository, ITechnicianProfileRepository, IPlatformUnitOfWork, IPlatformTenantRepository, IAuditLog, IOutbox,
-      IPasswordSetupTokenRepository, IClientCompanyRepository
+      IPasswordSetupTokenRepository, IClientCompanyRepository, IPasswordRecoveryRepository
 {
     private Guid? currentTenant;
 
@@ -66,14 +66,56 @@ public sealed class InMemoryIdentityStore
     public Task<PasswordSetupToken?> FindByHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken) =>
         Task.FromResult(Invitations.SingleOrDefault(i => i.TenantId == currentTenant && i.TokenHash == tokenHash));
 
-    public Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken) =>
-        Task.FromResult<IReadOnlyList<PasswordSetupToken>>([.. Invitations.Where(i => i.TenantId == currentTenant && i.UserId == userId && i.IsUsable(now))]);
+    public Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(
+        Guid userId, string purpose, DateTimeOffset now, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PasswordSetupToken>>(
+            [.. Invitations.Where(i => i.TenantId == currentTenant && i.UserId == userId && i.Purpose == purpose && i.IsUsable(now))]);
 
     public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
-        Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId && i.UsedAt is not null));
+        Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId && !i.IsRecovery && i.UsedAt is not null));
 
     public Task<bool> HasAnyAsync(Guid userId, CancellationToken cancellationToken) =>
-        Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId));
+        Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId && !i.IsRecovery));
+
+    public List<PasswordRecoveryRequest> Recoveries { get; } = [];
+
+    /// <summary>Intentos de recuperación por (tenant, hash del correo), como <c>password_recovery_attempts</c>.</summary>
+    public List<(Guid TenantId, string EmailHash, DateTimeOffset At)> RecoveryAttempts { get; } = [];
+
+    public Task<DateTimeOffset?> TryRegisterAttemptAsync(
+        Guid tenantId, string emailHash, DateTimeOffset now, int maxAttempts, TimeSpan window, CancellationToken cancellationToken)
+    {
+        var recent = RecoveryAttempts
+            .Where(a => a.TenantId == currentTenant && a.EmailHash == emailHash && a.At > now - window)
+            .Select(a => a.At)
+            .Order()
+            .ToList();
+        if (recent.Count >= maxAttempts)
+        {
+            return Task.FromResult<DateTimeOffset?>(recent[recent.Count - maxAttempts] + window);
+        }
+
+        RecoveryAttempts.Add((tenantId, emailHash, now));
+        return Task.FromResult<DateTimeOffset?>(null);
+    }
+
+    public Task<PasswordRecoveryRequest?> FindPendingForUserForUpdateAsync(Guid userId, CancellationToken cancellationToken) =>
+        Task.FromResult(Recoveries.SingleOrDefault(r => r.TenantId == currentTenant && r.UserId == userId && r.IsPending));
+
+    Task<PasswordRecoveryRequest?> IPasswordRecoveryRepository.FindForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
+        Task.FromResult(Recoveries.SingleOrDefault(r => r.TenantId == currentTenant && r.Id == id));
+
+    public Task<PasswordRecoveryPage> ListPendingAsync(int page, int size, CancellationToken cancellationToken)
+    {
+        var rows = Recoveries
+            .Where(r => r.TenantId == currentTenant && r.IsPending)
+            .Join(Users, r => r.UserId, u => u.Id, (r, u) => new PasswordRecoveryView(r.Id, u.Id, u.Email, u.FullName, u.Role, r.RequestedAt))
+            .OrderBy(v => v.RequestedAt)
+            .ToList();
+        return Task.FromResult(new PasswordRecoveryPage([.. rows.Skip((page - 1) * size).Take(size)], page, size, rows.Count));
+    }
+
+    public void Add(PasswordRecoveryRequest request) => Recoveries.Add(request);
 
     public void Add(PasswordSetupToken token) => Invitations.Add(token);
 
@@ -98,7 +140,7 @@ public sealed class InMemoryIdentityStore
                 u.Email,
                 u.FullName,
                 u.Phone,
-                !Invitations.Any(i => i.UserId == u.Id) || Invitations.Any(i => i.UserId == u.Id && i.UsedAt is not null),
+                !Invitations.Any(i => i.UserId == u.Id && !i.IsRecovery) || Invitations.Any(i => i.UserId == u.Id && !i.IsRecovery && i.UsedAt is not null),
                 u.CreatedAt))
             .ToList();
         return Task.FromResult(new CompanyUserPage([.. rows.Skip((page - 1) * size).Take(size)], page, size, rows.Count));

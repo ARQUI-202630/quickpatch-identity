@@ -20,6 +20,7 @@ public static class Problems
     public const string InvalidLink = Base + "enlace-invalido";
     public const string PasswordAlreadySet = Base + "contrasena-definida";
     public const string InvalidTransition = Base + "transicion-invalida";
+    public const string TooManyRequests = Base + "demasiadas-solicitudes";
 
     /// <summary>Agrega <c>correlationId</c> y el tipo según el código a todo Problem Details del servicio.</summary>
     public static void Customize(ProblemDetailsContext context)

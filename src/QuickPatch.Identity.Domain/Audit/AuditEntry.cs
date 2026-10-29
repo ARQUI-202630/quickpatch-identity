@@ -12,6 +12,7 @@ public sealed class AuditEntry
     public const string ApproveTechnician = "aprobar_tecnico";
     public const string RejectTechnician = "rechazar_tecnico";
     public const string SuspendTechnician = "suspender_tecnico";
+    public const string IssueRecoveryLink = "generar_enlace_recuperacion";
 
     public AuditEntry(Guid id, Guid? tenantId, Guid? actorUserId, string action, Guid? targetId, string? metadata, DateTimeOffset createdAt)
     {
