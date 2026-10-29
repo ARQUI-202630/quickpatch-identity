@@ -24,6 +24,10 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
 
     public DbSet<PasswordSetupToken> PasswordSetupTokens => Set<PasswordSetupToken>();
 
+    public DbSet<PasswordRecoveryRequest> PasswordRecoveryRequests => Set<PasswordRecoveryRequest>();
+
+    public DbSet<PasswordRecoveryAttemptRecord> PasswordRecoveryAttempts => Set<PasswordRecoveryAttemptRecord>();
+
     public DbSet<OutboxEventRecord> OutboxEvents => Set<OutboxEventRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -119,6 +123,10 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.Property(x => x.TenantId).HasColumnName("tenant_id");
             e.Property(x => x.UserId).HasColumnName("user_id");
             e.Property(x => x.TokenHash).HasColumnName("token_hash").HasMaxLength(64).IsFixedLength();
+
+            // Contrato 1.10.0: las invitaciones existentes quedan como 'invitacion'.
+            e.Property(x => x.Purpose).HasColumnName("purpose").HasMaxLength(20).HasDefaultValue(PasswordSetupToken.InvitationPurpose);
+            e.Ignore(x => x.IsRecovery);
             e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
             e.Property(x => x.UsedAt).HasColumnName("used_at");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
@@ -126,6 +134,39 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(x => x.TokenHash).IsUnique().HasDatabaseName("ux_password_setup_tokens_hash");
             e.HasIndex(x => x.UserId).HasDatabaseName("ix_password_setup_tokens_user");
+        });
+
+        // Recuperación de la contraseña (contrato 1.10.0, SCRUM-625).
+        modelBuilder.Entity<PasswordRecoveryRequest>(e =>
+        {
+            e.ToTable("password_recovery_requests");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.Status).HasColumnName("status").HasMaxLength(20);
+            e.Property(x => x.RequestedAt).HasColumnName("requested_at");
+            e.Property(x => x.ClosedAt).HasColumnName("closed_at");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Ignore(x => x.IsPending);
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+
+            // Como máximo una solicitud pendiente por usuario; la lista del administrador va por fecha.
+            e.HasIndex(x => x.UserId).IsUnique().HasFilter("status = 'pendiente'").HasDatabaseName("ux_password_recovery_requests_pending");
+            e.HasIndex(x => new { x.Status, x.RequestedAt }).HasDatabaseName("ix_password_recovery_requests_status");
+        });
+
+        modelBuilder.Entity<PasswordRecoveryAttemptRecord>(e =>
+        {
+            e.ToTable("password_recovery_attempts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.TenantId).HasColumnName("tenant_id");
+            e.Property(x => x.EmailHash).HasColumnName("email_hash").HasMaxLength(64).IsFixedLength();
+            e.Property(x => x.AttemptedAt).HasColumnName("attempted_at");
+            e.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(x => new { x.EmailHash, x.AttemptedAt }).HasDatabaseName("ix_password_recovery_attempts_email");
         });
 
         modelBuilder.Entity<AuditEntry>(e =>
@@ -159,4 +200,19 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.HasIndex(x => x.CreatedAt).HasDatabaseName("ix_outbox_events_pending").HasFilter("published_at IS NULL");
         });
     }
+}
+
+/// <summary>
+/// Fila de <c>password_recovery_attempts</c>: una por pedido de recuperación aceptado, para limitar los pedidos por correo
+/// (contrato 1.10.0). Guarda el hash SHA-256 del correo normalizado, no el correo, porque también cuenta correos sin cuenta.
+/// </summary>
+public sealed class PasswordRecoveryAttemptRecord
+{
+    public Guid Id { get; set; }
+
+    public Guid TenantId { get; set; }
+
+    public string EmailHash { get; set; } = string.Empty;
+
+    public DateTimeOffset AttemptedAt { get; set; }
 }

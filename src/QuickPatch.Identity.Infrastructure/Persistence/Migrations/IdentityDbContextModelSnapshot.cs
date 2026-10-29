@@ -215,6 +215,53 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordRecoveryRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_password_recovery_requests_pending")
+                        .HasFilter("status = 'pendiente'");
+
+                    b.HasIndex("Status", "RequestedAt")
+                        .HasDatabaseName("ix_password_recovery_requests_status");
+
+                    b.ToTable("password_recovery_requests", (string)null);
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordSetupToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -228,6 +275,14 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("invitacion")
+                        .HasColumnName("purpose");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -392,6 +447,37 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("outbox_events", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Persistence.PasswordRecoveryAttemptRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AttemptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attempted_at");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("email_hash")
+                        .IsFixedLength();
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("EmailHash", "AttemptedAt")
+                        .HasDatabaseName("ix_password_recovery_attempts_email");
+
+                    b.ToTable("password_recovery_attempts", (string)null);
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Companies.ClientCompany", b =>
                 {
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
@@ -422,6 +508,21 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordRecoveryRequest", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordSetupToken", b =>
                 {
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
@@ -445,6 +546,15 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_users_client_companies");
 
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Persistence.PasswordRecoveryAttemptRecord", b =>
+                {
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")

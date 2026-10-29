@@ -71,14 +71,18 @@ public interface IUserRepository
     void Add(User user);
 }
 
-/// <summary>Invitaciones para definir la contraseña (<c>password_setup_tokens</c>, contrato 1.7.0), bajo RLS.</summary>
+/// <summary>
+/// Invitaciones para definir la contraseña (<c>password_setup_tokens</c>, contrato 1.7.0) y, desde 1.10.0, enlaces de
+/// recuperación, bajo RLS. Salvo <see cref="FindByHashForUpdateAsync"/>, cada método trabaja con un solo propósito.
+/// </summary>
 public interface IPasswordSetupTokenRepository
 {
     /// <summary>Busca por el hash del token y bloquea la fila (<c>FOR UPDATE</c>) para que solo se use una vez.</summary>
     Task<PasswordSetupToken?> FindByHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken);
 
-    /// <summary>Invitaciones del usuario sin usar y sin vencer, bloqueadas para anularlas.</summary>
-    Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(Guid userId, DateTimeOffset now, CancellationToken cancellationToken);
+    /// <summary>Tokens del usuario con ese propósito sin usar y sin vencer, bloqueados para anularlos.</summary>
+    Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(
+        Guid userId, string purpose, DateTimeOffset now, CancellationToken cancellationToken);
 
     /// <summary>Si el usuario ya definió su contraseña con alguna invitación.</summary>
     Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken);
@@ -88,6 +92,37 @@ public interface IPasswordSetupTokenRepository
 
     void Add(PasswordSetupToken token);
 }
+
+/// <summary>
+/// Recuperación de la contraseña olvidada (contrato 1.10.0, SCRUM-625): solicitudes pendientes para el administrador
+/// (<c>password_recovery_requests</c>) y límite de solicitudes por correo (<c>password_recovery_attempts</c>), bajo RLS.
+/// </summary>
+public interface IPasswordRecoveryRepository
+{
+    /// <summary>
+    /// Registra un intento para el correo si no pasa del límite en la ventana, contando también los correos sin cuenta.
+    /// Serializa los intentos del mismo correo para que dos peticiones simultáneas no superen el límite. Devuelve
+    /// <c>null</c> si se registró, o cuándo podrá pedirse otra vez.
+    /// </summary>
+    Task<DateTimeOffset?> TryRegisterAttemptAsync(
+        Guid tenantId, string emailHash, DateTimeOffset now, int maxAttempts, TimeSpan window, CancellationToken cancellationToken);
+
+    /// <summary>La solicitud pendiente del usuario, bloqueada (<c>FOR UPDATE</c>).</summary>
+    Task<PasswordRecoveryRequest?> FindPendingForUserForUpdateAsync(Guid userId, CancellationToken cancellationToken);
+
+    /// <summary>La solicitud por id, bloqueada; nula si no existe en el tenant de la sesión.</summary>
+    Task<PasswordRecoveryRequest?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>Solicitudes pendientes del tenant con los datos del usuario, de la más antigua a la más reciente.</summary>
+    Task<PasswordRecoveryPage> ListPendingAsync(int page, int size, CancellationToken cancellationToken);
+
+    void Add(PasswordRecoveryRequest request);
+}
+
+/// <summary>Solicitud pendiente tal como la ve el administrador (esquema <c>PasswordRecoveryPending</c>, contrato 1.10.0).</summary>
+public sealed record PasswordRecoveryView(Guid Id, Guid UserId, string Email, string FullName, string Role, DateTimeOffset RequestedAt);
+
+public sealed record PasswordRecoveryPage(IReadOnlyList<PasswordRecoveryView> Items, int Page, int Size, int TotalItems);
 
 /// <summary>Empresas cliente (<c>client_companies</c>, DD 5.19), bajo RLS.</summary>
 public interface IClientCompanyRepository
