@@ -34,6 +34,9 @@ GRANT SELECT, INSERT ON audit_logs TO identity_app;
 GRANT SELECT, INSERT, UPDATE ON tenants TO identity_platform;
 GRANT SELECT ON users, technician_profiles TO identity_platform;
 GRANT SELECT, INSERT ON audit_logs TO identity_platform;
+-- El cambio de estado de un tenant encola tenant.status-changed en la misma transacción (ADR-007, SCRUM-509). El evento
+-- lleva el tenant que cambió, no el de la sesión: identity_platform (BYPASSRLS) lo inserta sin la política de tenant.
+GRANT INSERT ON outbox_events TO identity_platform;
 GRANT identity_platform TO identity_app WITH INHERIT FALSE, SET TRUE;
 
 -- Transactional Outbox (ADR-007, DD 5.15): el servicio inserta los eventos de su tenant (RLS); solo el publicador
