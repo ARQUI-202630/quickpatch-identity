@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Domain.Technicians;
+using QuickPatch.Identity.Domain.Tenants;
 
 namespace QuickPatch.Identity.Application.Events;
 
@@ -42,6 +43,9 @@ public sealed record TechnicianReputationChangedData(
     int RatingCount,
     bool LowReputation,
     DateTimeOffset ChangedAt);
+
+/// <summary><c>data</c> de <c>tenant.status-changed</c> v1 (<c>quickpatch-kafka</c> v0.10.0, SCRUM-508).</summary>
+public sealed record TenantStatusChangedData(Guid TenantId, string Status, DateTimeOffset UpdatedAt);
 
 /// <summary>Eventos que Identity consume.</summary>
 public static class ConsumedEvents
@@ -105,5 +109,34 @@ public static class TechnicianVerificationChangedEvent
             new TechnicianVerificationChangedData(
                 profile.UserId, profile.SpecialtyId, previousStatus, profile.VerificationStatus, profile.VerificationReason, now));
         return new OutboxMessage(eventId, profile.TenantId, profile.UserId, Type, JsonSerializer.Serialize(envelope, Json));
+    }
+}
+
+/// <summary>
+/// <c>tenant.status-changed</c>: el administrador de la plataforma activó o desactivó un tenant (RF-21, RN-T1). Lleva el
+/// estado completo y <c>updatedAt</c> = momento del cambio como versión (ADR-017): ServiceRequest descarta el evento si
+/// ya tiene uno más reciente. El <c>tenantId</c> del sobre y la clave del mensaje son los del tenant que cambió, no los del
+/// administrador de la plataforma.
+/// </summary>
+public static class TenantStatusChangedEvent
+{
+    public const string Type = "tenant.status-changed";
+
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    public static OutboxMessage From(Tenant tenant, Guid correlationId, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(tenant);
+        var eventId = Guid.CreateVersion7(now);
+        var envelope = new EventEnvelope<TenantStatusChangedData>(
+            eventId,
+            Type,
+            1,
+            now,
+            correlationId,
+            tenant.Id,
+            TechnicianRegisteredEvent.Producer,
+            new TenantStatusChangedData(tenant.Id, tenant.Status, now));
+        return new OutboxMessage(eventId, tenant.Id, tenant.Id, Type, JsonSerializer.Serialize(envelope, Json));
     }
 }

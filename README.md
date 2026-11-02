@@ -69,6 +69,7 @@ dotnet run --project src/QuickPatch.Identity.Api
 
 |Evento|Cuándo|Contrato|Historia|
 |---|---|---|---|
+|`tenant.status-changed` v1 (clave: `tenantId`)|El `admin_plataforma` activa o desactiva un tenant (`PATCH /v1/platform/tenants/{id}`, RF-21). Lleva el estado completo (`activo` o `inactivo`) y `updatedAt` = momento del cambio como versión (ADR-017); ServiceRequest guarda una réplica y rechaza crear solicitudes de un tenant inactivo (RN-T1). Repetir el estado no es un cambio y no publica. El `tenantId` es el del tenant que cambió, no el del administrador.|`contracts/kafka/events/tenant.status-changed.v1.json` (v0.10.0)|SCRUM-348 / SCRUM-509|
 |`technician.verification-changed` v1 (clave: `technicianId`)|El admin del tenant aprueba, rechaza o suspende al técnico. Lleva el estado anterior y el nuevo, el motivo y `updatedAt` = momento del cambio (ADR-017); Matching actualiza su copia del estado.|`contracts/kafka/events/technician.verification-changed.v1.json` (v0.3.0)|SCRUM-39, SCRUM-40 / SCRUM-106, SCRUM-109|
 |`technician.registered` v1 (clave: `technicianId`)|Un técnico o proveedor se registra y queda `pendiente`. Lleva la especialidad, el proveedor y el estado, con `updatedAt` como versión (ADR-017); Matching arma con él su proyección del técnico (P-01).|`contracts/kafka/events/technician.registered.v1.json` (v0.3.0)|SCRUM-22 / SCRUM-54|
 

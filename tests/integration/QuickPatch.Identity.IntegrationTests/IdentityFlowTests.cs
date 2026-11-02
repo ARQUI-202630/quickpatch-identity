@@ -70,6 +70,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
                 new TopicSpecification { Name = "technician.registered", NumPartitions = 1, ReplicationFactor = 1 },
                 new TopicSpecification { Name = "technician.verification-changed", NumPartitions = 1, ReplicationFactor = 1 },
                 new TopicSpecification { Name = "ranking.technician-reputation-changed", NumPartitions = 1, ReplicationFactor = 1 },
+                new TopicSpecification { Name = "tenant.status-changed", NumPartitions = 1, ReplicationFactor = 1 },
             ]);
         }
 

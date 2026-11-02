@@ -101,6 +101,68 @@ public class PlatformTenantsTests(IdentityApiFactory factory) : IClassFixture<Id
     }
 
     [Fact]
+    public async Task DesactivarYActivar_EncolaTenantStatusChangedConElEstadoCompleto()
+    {
+        var tenant = NewTenant();
+        using var client = ClientAs(Roles.AdminPlataforma);
+
+        using var desactivar = await client.PatchAsJsonAsync(TenantUri(tenant.Id), new { status = "inactivo" });
+        using var activar = await client.PatchAsJsonAsync(TenantUri(tenant.Id), new { status = "activo" });
+
+        Assert.Equal(HttpStatusCode.OK, desactivar.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, activar.StatusCode);
+        var eventos = factory.Store.Events.Where(e => e.AggregateId == tenant.Id).ToList();
+        Assert.Equal(2, eventos.Count);
+        Assert.All(eventos, e =>
+        {
+            Assert.Equal("tenant.status-changed", e.EventType);
+            // El evento es del tenant que cambió, no del administrador de la plataforma (RLS lo deja pasar con identity_platform).
+            Assert.Equal(tenant.Id, e.TenantId);
+        });
+        var primero = JsonDocument.Parse(eventos[0].Payload).RootElement;
+        var segundo = JsonDocument.Parse(eventos[1].Payload).RootElement;
+        Assert.Equal(1, primero.GetProperty("eventVersion").GetInt32());
+        Assert.Equal("identity-service", primero.GetProperty("producer").GetString());
+        Assert.Equal(tenant.Id, primero.GetProperty("tenantId").GetGuid());
+        Assert.Equal(eventos[0].Id, primero.GetProperty("eventId").GetGuid());
+        Assert.NotEqual(Guid.Empty, primero.GetProperty("correlationId").GetGuid());
+        Assert.Equal(tenant.Id, primero.GetProperty("data").GetProperty("tenantId").GetGuid());
+        Assert.Equal("inactivo", primero.GetProperty("data").GetProperty("status").GetString());
+        Assert.Equal("activo", segundo.GetProperty("data").GetProperty("status").GetString());
+        Assert.True(
+            segundo.GetProperty("data").GetProperty("updatedAt").GetDateTimeOffset()
+                >= primero.GetProperty("data").GetProperty("updatedAt").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task MismoEstado_NoPublicaEvento()
+    {
+        var tenant = NewTenant(Tenant.Inactive);
+        using var client = ClientAs(Roles.AdminPlataforma);
+
+        using var response = await client.PatchAsJsonAsync(TenantUri(tenant.Id), new { status = "inactivo" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.DoesNotContain(factory.Store.Events, e => e.AggregateId == tenant.Id);
+    }
+
+    [Fact]
+    public async Task EstadoInvalidoOTenantDeLaPlataforma_NoPublicanEvento()
+    {
+        var antes = factory.Store.Events.Count(e => e.EventType == "tenant.status-changed");
+        using var client = ClientAs(Roles.AdminPlataforma);
+
+        using var invalido = await client.PatchAsJsonAsync(TenantUri(IdentityApiFactory.InactiveTenant), new { status = "suspendido" });
+        using var plataforma = await client.PatchAsJsonAsync(TenantUri(IdentityApiFactory.ActiveTenant), new { status = "inactivo" });
+        using var noExiste = await client.PatchAsJsonAsync(TenantUri(Guid.NewGuid()), new { status = "activo" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, invalido.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, plataforma.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, noExiste.StatusCode);
+        Assert.Equal(antes, factory.Store.Events.Count(e => e.EventType == "tenant.status-changed"));
+    }
+
+    [Fact]
     public async Task MismoEstado_NoAuditaDeNuevo()
     {
         var tenant = NewTenant(Tenant.Inactive);
@@ -153,7 +215,7 @@ public class PlatformTenantsTests(IdentityApiFactory factory) : IClassFixture<Id
     public async Task Handler_ValidaElComando()
     {
         var store = new InMemoryIdentityStore();
-        var handler = new UpdateTenantStatusHandler(store, store, store, new MutableClock(Now));
+        var handler = new UpdateTenantStatusHandler(store, store, store, store, new MutableClock(Now));
 
         await Assert.ThrowsAsync<ArgumentNullException>(() => handler.HandleAsync(null!, CancellationToken.None));
         await Assert.ThrowsAsync<DomainValidationException>(() => handler.HandleAsync(
