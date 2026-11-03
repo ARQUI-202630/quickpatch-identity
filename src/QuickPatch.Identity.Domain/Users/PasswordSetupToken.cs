@@ -91,6 +91,20 @@ public sealed class PasswordSetupToken
         UsedAt = now;
     }
 
+    /// <summary>
+    /// Marca como usada una invitación que no se usó, aunque haya vencido, porque el usuario definió la contraseña con
+    /// un enlace de recuperación. Así deja de verse «sin contraseña definida» y la invitación ya no sirve.
+    /// </summary>
+    public void MarkUsedByRecovery(DateTimeOffset now)
+    {
+        if (IsRecovery)
+        {
+            throw new InvalidOperationException("Solo las invitaciones se marcan como usadas por la recuperación.");
+        }
+
+        UsedAt ??= now;
+    }
+
     /// <summary>Anula la invitación sin usarla (se generó otra o ya se definió la contraseña).</summary>
     public void Revoke(DateTimeOffset now)
     {

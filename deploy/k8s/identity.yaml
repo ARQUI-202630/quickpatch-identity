@@ -72,6 +72,9 @@ spec:
               valueFrom: { secretKeyRef: { name: identity-secretos, key: app-connection } }
             - name: Jwt__PrivateKeyPem
               valueFrom: { secretKeyRef: { name: identity-secretos, key: jwt-private-key } }
+            # Clave del HMAC del correo en la recuperación de contraseña (SCRUM-625). Sin ella Identity no arranca.
+            - name: PasswordRecovery__EmailHashKey
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: recovery-email-hash-key } }
             - name: Bootstrap__AdminEmail
               valueFrom: { secretKeyRef: { name: identity-secretos, key: admin-email, optional: true } }
             - name: Bootstrap__AdminPassword

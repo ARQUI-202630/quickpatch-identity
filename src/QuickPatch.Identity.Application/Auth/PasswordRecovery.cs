@@ -26,14 +26,15 @@ public abstract record RequestPasswordRecoveryResult
 
 /// <summary>
 /// Registra la solicitud para el <c>admin_tenant</c> si la cuenta existe y no es de un administrador; si ya había una
-/// pendiente actualiza su fecha. No genera ningún token. El límite es por correo y no por cuenta, y se guarda el hash
-/// del correo, para no revelar ni conservar quién está registrado.
+/// pendiente actualiza su fecha. No genera ningún token. El límite es por correo y no por cuenta, y se guarda el HMAC
+/// del correo (<see cref="IEmailHasher"/>), para no revelar ni conservar quién está registrado.
 /// </summary>
 public sealed partial class RequestPasswordRecoveryHandler(
     ITenantUnitOfWork unitOfWork,
     ITenantRepository tenants,
     IUserRepository users,
     IPasswordRecoveryRepository recoveries,
+    IEmailHasher emailHasher,
     TimeProvider clock,
     ILogger<RequestPasswordRecoveryHandler> logger)
 {
@@ -42,7 +43,7 @@ public sealed partial class RequestPasswordRecoveryHandler(
         ArgumentNullException.ThrowIfNull(command);
         User.ValidateEmail(command.Email);
         var email = User.NormalizeEmail(command.Email);
-        var emailHash = PasswordSetupToken.Hash(email);
+        var emailHash = emailHasher.Hash(email);
         return unitOfWork.ExecuteAsync<RequestPasswordRecoveryResult>(
             command.TenantId,
             async ct =>
@@ -189,8 +190,9 @@ public sealed class IssueRecoveryLinkHandler(
 public sealed record ConfirmPasswordRecoveryCommand(Guid TenantId, string? Token, string? Password);
 
 /// <summary>
-/// Guarda el hash nuevo, marca el enlace como usado, anula los demás enlaces de recuperación del usuario, cierra su
-/// solicitud y desbloquea la cuenta (RN-U4), en una sola transacción del tenant. Solo acepta enlaces de recuperación:
+/// Guarda el hash nuevo, marca el enlace como usado, anula los demás enlaces de recuperación del usuario, marca como
+/// usadas sus invitaciones sin usar (el técnico del equipo que nunca activó la suya queda con la contraseña definida),
+/// cierra su solicitud y desbloquea la cuenta (RN-U4), en una sola transacción del tenant. Solo acepta enlaces de recuperación:
 /// una invitación, o un token usado, vencido, anulado o de otro tenant, responden igual.
 /// </summary>
 public sealed class ConfirmPasswordRecoveryHandler(
@@ -237,6 +239,11 @@ public sealed class ConfirmPasswordRecoveryHandler(
                 foreach (var other in await tokens.ListUsableForUpdateAsync(user.Id, PasswordSetupToken.RecoveryPurpose, now, ct))
                 {
                     other.Revoke(now);
+                }
+
+                foreach (var invitation in await tokens.ListUnusedForUpdateAsync(user.Id, PasswordSetupToken.InvitationPurpose, ct))
+                {
+                    invitation.MarkUsedByRecovery(now);
                 }
 
                 (await recoveries.FindPendingForUserForUpdateAsync(user.Id, ct))?.Close(now);

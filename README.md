@@ -94,6 +94,7 @@ docker compose up -d                       # PostgreSQL 16 con los roles de desa
 bash desarrollo/preparar-base.sh           # migraciones, db/roles.sql y tenant de ejemplo
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out desarrollo/dev.pem   # llave local; *.pem no se versiona
 export Jwt__PrivateKeyPem="$(cat desarrollo/dev.pem)"
+export PasswordRecovery__EmailHashKey="$(openssl rand -hex 32)"   # clave local del HMAC del correo; no se versiona
 ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/QuickPatch.Identity.Api
 ```
 
@@ -125,6 +126,7 @@ Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del p
 |---|---|
 |`ConnectionStrings__Identity`|PostgreSQL con el usuario `identity_app`|
 |`Jwt__PrivateKeyPem`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__Lifetime`|Emisión del token|
+|`PasswordRecovery__EmailHashKey`|Clave del HMAC-SHA256 del correo en `password_recovery_attempts` (mínimo 32 caracteres). Secreto de cada ambiente (`recovery-email-hash-key` en `identity-secretos`); sin ella Identity no arranca|
 |`Channel__TenantId`|Tenant del canal (RN-U5)|
 |`Passwords__WorkFactor`|Costo de BCrypt|
 |`Kafka__BootstrapServers`|Kafka (VM6 en producción, VM7 en QA); vacío, no se publica|

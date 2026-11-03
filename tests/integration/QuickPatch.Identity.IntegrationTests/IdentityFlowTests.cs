@@ -33,6 +33,9 @@ public sealed class IdentityEnvironment : IAsyncLifetime
     private readonly KafkaContainer kafka = new KafkaBuilder("confluentinc/cp-kafka:7.7.1").Build();
     private readonly string privateKey = RSA.Create(2048).ExportPkcs8PrivateKeyPem();
 
+    /// <summary>Clave fija de prueba del HMAC del correo; en los ambientes llega como secreto.</summary>
+    public const string EmailHashKey = "clave-de-prueba-del-hmac-del-correo-identity";
+
     public string AdminConnectionString => postgres.GetConnectionString();
 
     public string AppConnectionString => new NpgsqlConnectionStringBuilder(AdminConnectionString)
@@ -78,6 +81,7 @@ public sealed class IdentityEnvironment : IAsyncLifetime
         {
             b.UseSetting("ConnectionStrings:Identity", AppConnectionString);
             b.UseSetting("Jwt:PrivateKeyPem", privateKey);
+            b.UseSetting("PasswordRecovery:EmailHashKey", EmailHashKey);
             b.UseSetting("Passwords:WorkFactor", "4");
             b.UseSetting("Channel:TenantId", ActiveTenant.ToString());
             b.UseSetting("DevelopmentUsers:Enabled", "false");

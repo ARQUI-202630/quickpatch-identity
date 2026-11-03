@@ -71,6 +71,10 @@ public sealed class InMemoryIdentityStore
         Task.FromResult<IReadOnlyList<PasswordSetupToken>>(
             [.. Invitations.Where(i => i.TenantId == currentTenant && i.UserId == userId && i.Purpose == purpose && i.IsUsable(now))]);
 
+    public Task<IReadOnlyList<PasswordSetupToken>> ListUnusedForUpdateAsync(Guid userId, string purpose, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<PasswordSetupToken>>(
+            [.. Invitations.Where(i => i.TenantId == currentTenant && i.UserId == userId && i.Purpose == purpose && i.UsedAt is null)]);
+
     public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
         Task.FromResult(Invitations.Any(i => i.TenantId == currentTenant && i.UserId == userId && !i.IsRecovery && i.UsedAt is not null));
 
@@ -267,4 +271,7 @@ public static class TestKeys
     private static readonly RSA Key = RSA.Create(2048);
 
     public static string PrivateKeyPem { get; } = Key.ExportPkcs8PrivateKeyPem();
+
+    /// <summary>Clave fija de prueba del HMAC del correo (<c>PasswordRecovery:EmailHashKey</c>).</summary>
+    public const string EmailHashKey = "clave-de-prueba-del-hmac-del-correo-identity";
 }

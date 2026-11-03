@@ -84,6 +84,12 @@ public interface IPasswordSetupTokenRepository
     Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(
         Guid userId, string purpose, DateTimeOffset now, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Tokens del usuario con ese propósito que no se han usado, vencidos o no, bloqueados. La recuperación los marca
+    /// como usados para que el usuario quede con la contraseña definida.
+    /// </summary>
+    Task<IReadOnlyList<PasswordSetupToken>> ListUnusedForUpdateAsync(Guid userId, string purpose, CancellationToken cancellationToken);
+
     /// <summary>Si el usuario ya definió su contraseña con alguna invitación.</summary>
     Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken);
 
@@ -91,6 +97,16 @@ public interface IPasswordSetupTokenRepository
     Task<bool> HasAnyAsync(Guid userId, CancellationToken cancellationToken);
 
     void Add(PasswordSetupToken token);
+}
+
+/// <summary>
+/// Hash del correo normalizado para limitar los pedidos de recuperación sin conservar el correo (Ley 1581). Es un HMAC
+/// con una clave propia de Identity: sin la clave no se puede saber con un diccionario quién pidió la recuperación.
+/// Devuelve 64 caracteres hexadecimales en minúscula.
+/// </summary>
+public interface IEmailHasher
+{
+    string Hash(string normalizedEmail);
 }
 
 /// <summary>

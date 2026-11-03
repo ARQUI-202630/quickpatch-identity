@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 using QuickPatch.Identity.Application.Abstractions;
@@ -274,5 +275,16 @@ public class PasswordRecoveryApiTests(IdentityApiFactory factory) : IClassFixtur
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.True((await Json(response)).GetProperty("errors").TryGetProperty("password", out _));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("clave-corta")]
+    public void SinClaveDelHmacDelCorreo_ElServicioNoArranca(string key)
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("PasswordRecovery:EmailHashKey", key));
+
+        var error = Assert.Throws<Microsoft.Extensions.Options.OptionsValidationException>(() => app.CreateClient());
+        Assert.Contains("PasswordRecovery:EmailHashKey", error.Message, StringComparison.Ordinal);
     }
 }

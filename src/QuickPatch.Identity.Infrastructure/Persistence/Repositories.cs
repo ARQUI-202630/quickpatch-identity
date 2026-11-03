@@ -114,6 +114,12 @@ public sealed class PasswordSetupTokenRepository(IdentityDbContext db) : IPasswo
             .FromSql($"SELECT * FROM password_setup_tokens WHERE user_id = {userId} AND purpose = {purpose} AND used_at IS NULL AND expires_at > {now} FOR UPDATE")
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<PasswordSetupToken>> ListUnusedForUpdateAsync(
+        Guid userId, string purpose, CancellationToken cancellationToken) =>
+        await db.PasswordSetupTokens
+            .FromSql($"SELECT * FROM password_setup_tokens WHERE user_id = {userId} AND purpose = {purpose} AND used_at IS NULL FOR UPDATE")
+            .ToListAsync(cancellationToken);
+
     // Solo invitaciones: un enlace de recuperación no dice si el usuario definió su contraseña al registrarse.
     public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
         db.PasswordSetupTokens.AnyAsync(

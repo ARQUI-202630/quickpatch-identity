@@ -41,6 +41,7 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("Jwt:PrivateKeyPem", TestKeys.PrivateKeyPem);
+        builder.UseSetting("PasswordRecovery:EmailHashKey", TestKeys.EmailHashKey);
         builder.UseSetting("Channel:TenantId", ActiveTenant.ToString());
         builder.UseSetting("ConnectionStrings:Identity", "Host=sin-base-en-pruebas-unitarias");
         builder.UseSetting("DevelopmentUsers:Enabled", "false");
