@@ -51,6 +51,9 @@ dotnet run --project src/QuickPatch.Identity.Api
 |`POST /v1/auth/register/client`: registro de cliente (RF-01)|`openapi/identity.v1.yaml`|SCRUM-21 / SCRUM-63|
 |`POST /v1/auth/register/technician`: registro de técnico o proveedor con perfil `pendiente` (RF-02); documento único por tenant|`openapi/identity.v1.yaml` 1.1.0|SCRUM-22|
 |`POST /v1/auth/login`: login con bloqueo tras 5 fallos durante 15 min (RF-03, RN-U4) y rechazo de tenant inactivo (RN-T1)|`openapi/identity.v1.yaml`|SCRUM-23 / SCRUM-63|
+|`POST /v1/auth/password-recovery`: el usuario pide recuperar la contraseña con su correo; el tenant sale del canal. Responde `202` exista o no la cuenta. Deja una solicitud `pendiente` para el `admin_tenant` (una por usuario; si la pide otra vez se actualiza la fecha), salvo para administradores. Límite de 3 por correo por hora, cuente o no con cuenta (`429` con `Retry-After`), guardando solo el hash del correo|`openapi/identity.v1.yaml` 1.10.0|SCRUM-623 / SCRUM-625|
+|`GET /v1/admin/password-recovery-requests` y `POST /v1/admin/password-recovery-requests/{id}/link`: el `admin_tenant` ve las solicitudes pendientes de su tenant (RLS) y genera un enlace de un solo uso que vence en 1 hora (`#token=` en `Invitations:RecoveryLinkBase`), anulando los anteriores; se guarda solo el hash y queda en `audit_logs`. `409` si la solicitud ya se cerró|`openapi/identity.v1.yaml` 1.10.0|SCRUM-623 / SCRUM-625|
+|`POST /v1/auth/password-recovery/confirm`: contraseña nueva con el enlace de recuperación (no acepta invitaciones, y `/password/setup` no acepta enlaces de recuperación). Cierra la solicitud, anula los demás enlaces y desbloquea la cuenta. Los tokens ya emitidos siguen hasta vencer (ADR-018)|`openapi/identity.v1.yaml` 1.10.0|SCRUM-623 / SCRUM-625|
 |`GET /v1/users/me`: perfil del usuario del token; para técnicos y proveedores incluye `verificationStatus`|`openapi/identity.v1.yaml`|SCRUM-63|
 |`PATCH /v1/users/me`: el usuario del token edita su `fullName` (2 a 150) y su `phone` (7 a 30, o `null` para quitarlo; obligatorio para técnicos y proveedores). Correo, rol, tenant y estado de verificación no se editan: cualquier otro campo responde `400`. Bajo RLS y con la fila bloqueada; responde el perfil actualizado, como el `GET`|`openapi/identity.v1.yaml` 1.9.0|SCRUM-609 / SCRUM-611|
 |`GET /v1/admin/technicians`: técnicos y proveedores del tenant, paginados y filtrables por `verificationStatus` (RF-19); solo `admin_tenant`|`openapi/identity.v1.yaml` 1.3.0|SCRUM-39 / SCRUM-106|
@@ -91,6 +94,7 @@ docker compose up -d                       # PostgreSQL 16 con los roles de desa
 bash desarrollo/preparar-base.sh           # migraciones, db/roles.sql y tenant de ejemplo
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out desarrollo/dev.pem   # llave local; *.pem no se versiona
 export Jwt__PrivateKeyPem="$(cat desarrollo/dev.pem)"
+export PasswordRecovery__EmailHashKey="$(openssl rand -hex 32)"   # clave local del HMAC del correo; no se versiona
 ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/QuickPatch.Identity.Api
 ```
 
@@ -122,6 +126,7 @@ Contraseña de todos: `Quickpatch.Dev2026`. La especialidad del técnico y del p
 |---|---|
 |`ConnectionStrings__Identity`|PostgreSQL con el usuario `identity_app`|
 |`Jwt__PrivateKeyPem`, `Jwt__Issuer`, `Jwt__Audience`, `Jwt__Lifetime`|Emisión del token|
+|`PasswordRecovery__EmailHashKey`|Clave del HMAC-SHA256 del correo en `password_recovery_attempts` (mínimo 32 caracteres). Secreto de cada ambiente (`recovery-email-hash-key` en `identity-secretos`); sin ella Identity no arranca|
 |`Channel__TenantId`|Tenant del canal (RN-U5)|
 |`Passwords__WorkFactor`|Costo de BCrypt|
 |`Kafka__BootstrapServers`|Kafka (VM6 en producción, VM7 en QA); vacío, no se publica|

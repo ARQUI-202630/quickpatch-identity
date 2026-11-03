@@ -35,6 +35,10 @@ public static class DependencyInjection
         services.AddScoped<ListCompanyUsersHandler>();
         services.AddScoped<RenewCompanyInvitationHandler>();
         services.AddScoped<LoginHandler>();
+        services.AddScoped<RequestPasswordRecoveryHandler>();
+        services.AddScoped<ListPasswordRecoveriesHandler>();
+        services.AddScoped<IssueRecoveryLinkHandler>();
+        services.AddScoped<ConfirmPasswordRecoveryHandler>();
         services.AddScoped<GetCurrentUserHandler>();
         services.AddScoped<UpdateCurrentUserHandler>();
         services.AddScoped<LookupUsersHandler>();

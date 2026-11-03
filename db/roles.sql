@@ -22,6 +22,10 @@ GRANT SELECT ON tenants TO identity_app;
 GRANT SELECT, INSERT, UPDATE ON users, technician_profiles TO identity_app;
 -- Invitaciones del equipo del proveedor (contrato 1.7.0): solo el hash del token; nunca se borran.
 GRANT SELECT, INSERT, UPDATE ON password_setup_tokens TO identity_app;
+-- Recuperación de la contraseña (contrato 1.10.0, SCRUM-625): solicitudes para el admin_tenant y límite por correo
+-- (solo el hash del correo). Ninguna se borra desde el servicio.
+GRANT SELECT, INSERT, UPDATE ON password_recovery_requests TO identity_app;
+GRANT SELECT, INSERT ON password_recovery_attempts TO identity_app;
 -- Empresas cliente (DD 5.19, SCRUM-66): la razón social y el NIT no se editan en el MVP.
 GRANT SELECT, INSERT ON client_companies TO identity_app;
 

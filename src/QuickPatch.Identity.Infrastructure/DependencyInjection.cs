@@ -31,6 +31,13 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(JwtIssuerOptions.Section))
             .Validate(o => !string.IsNullOrWhiteSpace(o.PrivateKeyPem), "Falta Jwt:PrivateKeyPem: Identity no puede emitir tokens.")
             .ValidateOnStart();
+        // Sin la clave del HMAC del correo la recuperación guardaría hashes que se revierten con un diccionario: no arranca.
+        services.AddOptions<PasswordRecoveryOptions>()
+            .Bind(configuration.GetSection(PasswordRecoveryOptions.Section))
+            .Validate(
+                o => !string.IsNullOrWhiteSpace(o.EmailHashKey) && o.EmailHashKey.Length >= PasswordRecoveryOptions.MinKeyLength,
+                $"Falta PasswordRecovery:EmailHashKey (mínimo {PasswordRecoveryOptions.MinKeyLength} caracteres): Identity no puede limitar la recuperación de contraseña.")
+            .ValidateOnStart();
         services.Configure<PasswordOptions>(configuration.GetSection(PasswordOptions.Section));
         services.Configure<ChannelOptions>(configuration.GetSection(ChannelOptions.Section));
         services.Configure<InvitationOptions>(configuration.GetSection(InvitationOptions.Section));
@@ -44,12 +51,14 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ITechnicianProfileRepository, TechnicianProfileRepository>();
         services.AddScoped<IPasswordSetupTokenRepository, PasswordSetupTokenRepository>();
+        services.AddScoped<IPasswordRecoveryRepository, PasswordRecoveryRepository>();
         services.AddScoped<IClientCompanyRepository, ClientCompanyRepository>();
         services.AddScoped<IPlatformUnitOfWork, PlatformUnitOfWork>();
         services.AddScoped<IPlatformTenantRepository, PlatformTenantRepository>();
         services.AddScoped<IAuditLog, AuditLog>();
         services.AddScoped<IOutbox, EfOutbox>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
+        services.AddSingleton<IEmailHasher, HmacEmailHasher>();
         services.AddSingleton<RsaTokenIssuer>();
         services.AddSingleton<ITokenIssuer>(sp => sp.GetRequiredService<RsaTokenIssuer>());
 

@@ -79,6 +79,9 @@ public sealed record ProviderTechnicianCreated(
 /// <summary>Esquema <c>PasswordSetupRequest</c> del contrato 1.7.0.</summary>
 public sealed record PasswordSetupRequest(string? Token, string? Password);
 
+/// <summary>Esquema <c>PasswordRecoveryRequest</c> del contrato 1.10.0.</summary>
+public sealed record PasswordRecoveryRequestBody(string? Email);
+
 /// <summary>Endpoints del contrato <c>identity.v1.yaml</c>.</summary>
 public static class IdentityEndpoints
 {
@@ -91,6 +94,14 @@ public static class IdentityEndpoints
         app.MapPost("/v1/auth/register/technician", RegisterTechnicianAsync).WithName("registerTechnician").AllowAnonymous();
         app.MapPost("/v1/auth/password/setup", SetupPasswordAsync).WithName("setupPassword").AllowAnonymous();
         app.MapPost("/v1/auth/login", LoginAsync).WithName("login").AllowAnonymous();
+
+        // Recuperación de la contraseña (contrato 1.10.0, SCRUM-625): el usuario la pide y la confirma sin token; el
+        // admin_tenant ve las solicitudes de su tenant (RLS) y genera el enlace.
+        app.MapPost("/v1/auth/password-recovery", RequestPasswordRecoveryAsync).WithName("requestPasswordRecovery").AllowAnonymous();
+        app.MapPost("/v1/auth/password-recovery/confirm", ConfirmPasswordRecoveryAsync).WithName("confirmPasswordRecovery").AllowAnonymous();
+        var recovery = app.MapGroup("/v1/admin/password-recovery-requests").RequireAuthorization(policy => policy.RequireRole(Roles.AdminTenant));
+        recovery.MapGet(string.Empty, ListPasswordRecoveriesAsync).WithName("listPasswordRecoveryRequests");
+        recovery.MapPost("/{id:guid}/link", IssueRecoveryLinkAsync).WithName("createPasswordRecoveryLink");
         app.MapGet("/v1/users/me", GetCurrentUserAsync).WithName("getCurrentUser").RequireAuthorization();
         app.MapPatch("/v1/users/me", UpdateCurrentUserAsync).WithName("updateCurrentUser").RequireAuthorization();
 
@@ -550,6 +561,118 @@ public static class IdentityEndpoints
         }
     }
 
+    private static async Task<IResult> RequestPasswordRecoveryAsync(
+        PasswordRecoveryRequestBody body,
+        HttpContext context,
+        IOptions<ChannelOptions> channel,
+        RequestPasswordRecoveryHandler handler,
+        TimeProvider clock,
+        CancellationToken cancellationToken)
+    {
+        if (!TryChannelTenant(context, channel, out var tenantId))
+        {
+            return ChannelNotConfigured();
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(new RequestPasswordRecoveryCommand(tenantId, body.Email), cancellationToken);
+            return result switch
+            {
+                RequestPasswordRecoveryResult.TooManyRequests limited => new TooManyRequestsResult(RetryAfterSeconds(limited.RetryAt, clock.GetUtcNow())),
+                RequestPasswordRecoveryResult.TenantDisabled => TenantDisabled(),
+                _ => Results.Accepted(),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> ConfirmPasswordRecoveryAsync(
+        PasswordSetupRequest body,
+        HttpContext context,
+        IOptions<ChannelOptions> channel,
+        ConfirmPasswordRecoveryHandler handler,
+        CancellationToken cancellationToken)
+    {
+        if (!TryChannelTenant(context, channel, out var tenantId))
+        {
+            return ChannelNotConfigured();
+        }
+
+        try
+        {
+            var result = await handler.HandleAsync(new ConfirmPasswordRecoveryCommand(tenantId, body.Token, body.Password), cancellationToken);
+            return result switch
+            {
+                SetupPasswordResult.Done => Results.NoContent(),
+                SetupPasswordResult.TenantDisabled => TenantDisabled(),
+                _ => Results.Problem(
+                    statusCode: StatusCodes.Status400BadRequest,
+                    type: Problems.InvalidLink,
+                    title: "El enlace no es válido o ya venció"),
+            };
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> ListPasswordRecoveriesAsync(
+        HttpContext context,
+        ListPasswordRecoveriesHandler handler,
+        int? page,
+        int? size,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var admin))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        try
+        {
+            return Results.Ok(await handler.HandleAsync(new ListPasswordRecoveriesQuery(admin.TenantId, page ?? 1, size ?? 20), cancellationToken));
+        }
+        catch (DomainValidationException ex)
+        {
+            return ValidationProblem(ex.Errors);
+        }
+    }
+
+    private static async Task<IResult> IssueRecoveryLinkAsync(
+        Guid id,
+        HttpContext context,
+        IssueRecoveryLinkHandler handler,
+        IOptions<InvitationOptions> invitations,
+        CancellationToken cancellationToken)
+    {
+        if (!AuthenticatedUser.TryFrom(context.User, out var admin))
+        {
+            return Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "El token no trae usuario ni tenant válidos.");
+        }
+
+        var result = await handler.HandleAsync(
+            new IssueRecoveryLinkCommand(admin.TenantId, admin.UserId, id, CorrelationId.Get(context)), cancellationToken);
+        return result switch
+        {
+            IssueRecoveryLinkResult.Issued ok => Results.Json(
+                new InvitationResponse(invitations.Value.RecoveryLinkFor(ok.Link.Token), ok.Link.Token, ok.Link.ExpiresAt),
+                statusCode: StatusCodes.Status201Created),
+            IssueRecoveryLinkResult.AlreadyClosed => Results.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                type: Problems.InvalidTransition,
+                title: "La solicitud ya se cerró",
+                detail: "El usuario ya definió su contraseña nueva."),
+            _ => Results.Problem(statusCode: StatusCodes.Status404NotFound, type: Problems.NotFound, title: "La solicitud no existe."),
+        };
+    }
+
+    private static int RetryAfterSeconds(DateTimeOffset until, DateTimeOffset now) => Math.Max(1, (int)Math.Ceiling((until - now).TotalSeconds));
+
     private static async Task<IResult> ListTeamAsync(
         HttpContext context,
         ListTeamHandler handler,
@@ -639,6 +762,20 @@ public static class IdentityEndpoints
             errors.ToDictionary(e => e.Key, e => e.Value),
             title: "La solicitud tiene datos inválidos",
             type: Problems.Validation);
+
+    /// <summary>429 con <c>Retry-After</c> (contrato 1.10.0), en formato Problem Details.</summary>
+    private sealed class TooManyRequestsResult(int retryAfterSeconds) : IResult
+    {
+        public Task ExecuteAsync(HttpContext httpContext)
+        {
+            httpContext.Response.Headers.RetryAfter = retryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            return Results.Problem(
+                statusCode: StatusCodes.Status429TooManyRequests,
+                type: Problems.TooManyRequests,
+                title: "Demasiadas solicitudes",
+                detail: "Ya pediste recuperar la contraseña varias veces. Intenta de nuevo más tarde.").ExecuteAsync(httpContext);
+        }
+    }
 
     /// <summary>423 con <c>Retry-After</c> (contrato), en formato Problem Details.</summary>
     private sealed class LockedResult(int retryAfterSeconds) : IResult

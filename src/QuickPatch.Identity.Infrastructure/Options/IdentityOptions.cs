@@ -15,6 +15,21 @@ public sealed class JwtIssuerOptions
     public TimeSpan Lifetime { get; set; } = TimeSpan.FromMinutes(60);
 }
 
+/// <summary>
+/// Recuperación de la contraseña (sección <c>PasswordRecovery</c>, SCRUM-625). La clave del HMAC del correo es propia de
+/// Identity y llega como secreto de cada ambiente (<c>PasswordRecovery__EmailHashKey</c>), nunca en el repositorio.
+/// </summary>
+public sealed class PasswordRecoveryOptions
+{
+    public const string Section = "PasswordRecovery";
+
+    /// <summary>Largo mínimo de la clave: 32 caracteres, lo mismo que el resultado de HMAC-SHA256.</summary>
+    public const int MinKeyLength = 32;
+
+    /// <summary>Clave de HMAC-SHA256 para <c>password_recovery_attempts.email_hash</c>.</summary>
+    public string EmailHashKey { get; set; } = string.Empty;
+}
+
 /// <summary>Hash de contraseñas (sección <c>Passwords</c>).</summary>
 public sealed class PasswordOptions
 {
@@ -45,6 +60,11 @@ public sealed class InvitationOptions
     public string LinkBase { get; set; } = "https://quickpatch.internal/activar";
 
     public string LinkFor(string token) => $"{LinkBase.TrimEnd('#')}#token={token}";
+
+    /// <summary>Página o enlace profundo de la app que abre la pantalla de la contraseña nueva (recuperación, contrato 1.10.0).</summary>
+    public string RecoveryLinkBase { get; set; } = "https://quickpatch.internal/recuperar";
+
+    public string RecoveryLinkFor(string token) => $"{RecoveryLinkBase.TrimEnd('#')}#token={token}";
 }
 
 /// <summary>

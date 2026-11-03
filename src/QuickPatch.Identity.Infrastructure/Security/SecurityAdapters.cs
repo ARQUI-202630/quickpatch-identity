@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -30,6 +31,33 @@ public sealed class BCryptPasswordHasher(IOptions<PasswordOptions> options) : IP
     }
 
     public void SimulateVerify(string password) => _ = BCrypt.Net.BCrypt.Verify(password, dummyHash.Value);
+}
+
+/// <summary>
+/// HMAC-SHA256 del correo normalizado con la clave de Identity (<see cref="PasswordRecoveryOptions.EmailHashKey"/>).
+/// Sin la clave, el hash guardado en <c>password_recovery_attempts</c> no se puede revertir con un diccionario de correos.
+/// </summary>
+public sealed class HmacEmailHasher : IEmailHasher
+{
+    private readonly byte[] key;
+
+    public HmacEmailHasher(IOptions<PasswordRecoveryOptions> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var configured = options.Value.EmailHashKey;
+        if (string.IsNullOrWhiteSpace(configured) || configured.Length < PasswordRecoveryOptions.MinKeyLength)
+        {
+            throw new InvalidOperationException("Falta PasswordRecovery:EmailHashKey: Identity no puede limitar la recuperación de contraseña.");
+        }
+
+        key = Encoding.UTF8.GetBytes(configured);
+    }
+
+    public string Hash(string normalizedEmail)
+    {
+        ArgumentNullException.ThrowIfNull(normalizedEmail);
+        return Convert.ToHexStringLower(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(normalizedEmail)));
+    }
 }
 
 /// <summary>

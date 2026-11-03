@@ -51,7 +51,7 @@ public sealed class RenewInvitationHandler(
                 }
 
                 var now = clock.GetUtcNow();
-                foreach (var pending in await invitations.ListUsableForUpdateAsync(user.Id, now, ct))
+                foreach (var pending in await invitations.ListUsableForUpdateAsync(user.Id, PasswordSetupToken.InvitationPurpose, now, ct))
                 {
                     pending.Revoke(now);
                 }
@@ -114,14 +114,17 @@ public sealed class SetupPasswordHandler(
 
                 var now = clock.GetUtcNow();
                 var invitation = await invitations.FindByHashForUpdateAsync(tokenHash, ct);
-                var user = invitation is not null && invitation.IsUsable(now) ? await users.FindByIdForUpdateAsync(invitation.UserId, ct) : null;
+                // Un enlace de recuperación no sirve aquí (contrato 1.10.0): tiene su propio endpoint.
+                var user = invitation is not null && !invitation.IsRecovery && invitation.IsUsable(now)
+                    ? await users.FindByIdForUpdateAsync(invitation.UserId, ct)
+                    : null;
                 if (invitation is null || user is null)
                 {
                     return new SetupPasswordResult.InvalidLink();
                 }
 
                 invitation.Consume(now);
-                foreach (var other in await invitations.ListUsableForUpdateAsync(user.Id, now, ct))
+                foreach (var other in await invitations.ListUsableForUpdateAsync(user.Id, PasswordSetupToken.InvitationPurpose, now, ct))
                 {
                     other.Revoke(now);
                 }

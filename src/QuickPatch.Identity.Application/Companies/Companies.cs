@@ -304,7 +304,7 @@ public sealed class RenewCompanyInvitationHandler(
                 }
 
                 var now = clock.GetUtcNow();
-                foreach (var pending in await invitations.ListUsableForUpdateAsync(user.Id, now, ct))
+                foreach (var pending in await invitations.ListUsableForUpdateAsync(user.Id, PasswordSetupToken.InvitationPurpose, now, ct))
                 {
                     pending.Revoke(now);
                 }

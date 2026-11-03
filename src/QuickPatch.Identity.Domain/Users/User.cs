@@ -303,6 +303,16 @@ public sealed class User
         LockedUntil = null;
     }
 
+    /// <summary>Valida el correo con la misma regla del registro (recuperación de la contraseña, contrato 1.10.0).</summary>
+    public static void ValidateEmail(string? email)
+    {
+        var correo = NormalizeEmail(email);
+        if (correo.Length is 0 or > EmailMaxLength || !IsValidEmail(correo))
+        {
+            throw new DomainValidationException(new Dictionary<string, string[]> { ["email"] = ["El correo no tiene un formato válido."] });
+        }
+    }
+
     /// <summary>Valida la contraseña con la política del registro (RN-U2, TD IDN-001).</summary>
     public static void ValidatePassword(string? password)
     {
