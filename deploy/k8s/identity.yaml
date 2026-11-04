@@ -128,5 +128,8 @@ spec:
           - { path: /v1/users, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/platform, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/admin/technicians, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          # Bandeja de recuperación de contraseña del admin_tenant y generación del enlace (contrato 1.10.0, SCRUM-625). Sin esta regla
+          # Traefik responde 404 aunque Identity tenga las rutas: /v1/admin/technicians no las cubre.
+          - { path: /v1/admin/password-recovery-requests, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/providers, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/companies, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
