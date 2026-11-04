@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Companies;
 using QuickPatch.Identity.Application.Platform;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Users;
 
@@ -20,10 +22,29 @@ public static class DependencyInjection
         services.AddSingleton(LockoutPolicy.Default);
         services.AddScoped<RegisterClientHandler>();
         services.AddScoped<RegisterTechnicianHandler>();
+        services.AddScoped<ListTechniciansHandler>();
+        services.AddScoped<ChangeVerificationHandler>();
+        services.AddScoped<ApplyReputationHandler>();
+        services.AddScoped<CreateTeamTechnicianHandler>();
+        services.AddScoped<ListTeamHandler>();
+        services.AddScoped<RenewInvitationHandler>();
+        services.AddScoped<SetupPasswordHandler>();
+        services.AddScoped<RegisterCompanyHandler>();
+        services.AddScoped<GetMyCompanyHandler>();
+        services.AddScoped<CreateCompanyUserHandler>();
+        services.AddScoped<ListCompanyUsersHandler>();
+        services.AddScoped<RenewCompanyInvitationHandler>();
         services.AddScoped<LoginHandler>();
+        services.AddScoped<RequestPasswordRecoveryHandler>();
+        services.AddScoped<ListPasswordRecoveriesHandler>();
+        services.AddScoped<IssueRecoveryLinkHandler>();
+        services.AddScoped<ConfirmPasswordRecoveryHandler>();
         services.AddScoped<GetCurrentUserHandler>();
+        services.AddScoped<UpdateCurrentUserHandler>();
+        services.AddScoped<LookupUsersHandler>();
         services.AddScoped<EnsureTenantAdminHandler>();
         services.AddScoped<ListTenantsHandler>();
+        services.AddScoped<CreateTenantHandler>();
         services.AddScoped<UpdateTenantStatusHandler>();
         return services;
     }

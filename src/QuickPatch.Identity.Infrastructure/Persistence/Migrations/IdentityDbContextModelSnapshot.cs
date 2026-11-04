@@ -17,7 +17,7 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -65,6 +65,52 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("audit_logs", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Companies.ClientCompany", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContactEmail")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("contact_phone");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("LegalName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("legal_name");
+
+                    b.Property<string>("Nit")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("nit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Nit")
+                        .IsUnique()
+                        .HasDatabaseName("ux_client_companies_tenant_nit");
+
+                    b.ToTable("client_companies", (string)null);
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Technicians.TechnicianProfile", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -80,9 +126,21 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("LowReputation")
+                        .HasColumnType("boolean")
+                        .HasColumnName("low_reputation");
+
                     b.Property<Guid?>("ProviderId")
                         .HasColumnType("uuid")
                         .HasColumnName("provider_id");
+
+                    b.Property<int>("RatingCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("rating_count");
+
+                    b.Property<DateTimeOffset?>("ReputationChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reputation_changed_at");
 
                     b.Property<Guid>("SpecialtyId")
                         .HasColumnType("uuid")
@@ -103,6 +161,10 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .HasColumnName("verification_status");
 
                     b.HasKey("UserId");
+
+                    b.HasIndex("ProviderId")
+                        .HasDatabaseName("ix_technician_profiles_provider")
+                        .HasFilter("provider_id IS NOT NULL");
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_technician_profiles_tenant");
@@ -153,11 +215,117 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.ToTable("tenants", (string)null);
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordRecoveryRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_password_recovery_requests_pending")
+                        .HasFilter("status = 'pendiente'");
+
+                    b.HasIndex("Status", "RequestedAt")
+                        .HasDatabaseName("ix_password_recovery_requests_status");
+
+                    b.ToTable("password_recovery_requests", (string)null);
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordSetupToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("invitacion")
+                        .HasColumnName("purpose");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("token_hash")
+                        .IsFixedLength();
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_password_setup_tokens_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_password_setup_tokens_user");
+
+                    b.ToTable("password_setup_tokens", (string)null);
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Users.User", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -211,6 +379,10 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_users_company")
+                        .HasFilter("company_id IS NOT NULL");
+
                     b.HasIndex("TenantId", "DocumentId")
                         .IsUnique()
                         .HasDatabaseName("ux_users_tenant_document")
@@ -223,11 +395,106 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Role")
                         .HasDatabaseName("ix_users_tenant_role");
 
-                    b.ToTable("users", (string)null);
+                    b.ToTable("users", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_users_company_role", "(role = 'empresa_contacto') = (company_id IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Messaging.OutboxEventRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AggregateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aggregate_id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("event_type");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.Property<DateTimeOffset?>("PublishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("published_at");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_outbox_events_pending")
+                        .HasFilter("published_at IS NULL");
+
+                    b.ToTable("outbox_events", (string)null);
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Persistence.PasswordRecoveryAttemptRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AttemptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("attempted_at");
+
+                    b.Property<string>("EmailHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("email_hash")
+                        .IsFixedLength();
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("EmailHash", "AttemptedAt")
+                        .HasDatabaseName("ix_password_recovery_attempts_email");
+
+                    b.ToTable("password_recovery_attempts", (string)null);
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Companies.ClientCompany", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("QuickPatch.Identity.Domain.Technicians.TechnicianProfile", b =>
                 {
+                    b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("ProviderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_technician_profiles_provider");
+
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
@@ -241,7 +508,52 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordRecoveryRequest", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Domain.Users.PasswordSetupToken", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("QuickPatch.Identity.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("QuickPatch.Identity.Domain.Users.User", b =>
+                {
+                    b.HasOne("QuickPatch.Identity.Domain.Companies.ClientCompany", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_users_client_companies");
+
+                    b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Persistence.PasswordRecoveryAttemptRecord", b =>
                 {
                     b.HasOne("QuickPatch.Identity.Domain.Tenants.Tenant", null)
                         .WithMany()

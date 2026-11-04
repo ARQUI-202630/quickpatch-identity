@@ -15,6 +15,21 @@ public sealed class JwtIssuerOptions
     public TimeSpan Lifetime { get; set; } = TimeSpan.FromMinutes(60);
 }
 
+/// <summary>
+/// Recuperación de la contraseña (sección <c>PasswordRecovery</c>, SCRUM-625). La clave del HMAC del correo es propia de
+/// Identity y llega como secreto de cada ambiente (<c>PasswordRecovery__EmailHashKey</c>), nunca en el repositorio.
+/// </summary>
+public sealed class PasswordRecoveryOptions
+{
+    public const string Section = "PasswordRecovery";
+
+    /// <summary>Largo mínimo de la clave: 32 caracteres, lo mismo que el resultado de HMAC-SHA256.</summary>
+    public const int MinKeyLength = 32;
+
+    /// <summary>Clave de HMAC-SHA256 para <c>password_recovery_attempts.email_hash</c>.</summary>
+    public string EmailHashKey { get; set; } = string.Empty;
+}
+
 /// <summary>Hash de contraseñas (sección <c>Passwords</c>).</summary>
 public sealed class PasswordOptions
 {
@@ -34,12 +49,55 @@ public sealed class PlatformOptions
 }
 
 /// <summary>
+/// Enlace de la invitación del equipo del proveedor (sección <c>Invitations</c>, contrato 1.7.0). El token va después
+/// de <c>#</c>, así no llega a los registros de los servidores web cuando el técnico abre el enlace.
+/// </summary>
+public sealed class InvitationOptions
+{
+    public const string Section = "Invitations";
+
+    /// <summary>Página o enlace profundo de la app que abre la pantalla para definir la contraseña.</summary>
+    public string LinkBase { get; set; } = "https://quickpatch.internal/activar";
+
+    public string LinkFor(string token) => $"{LinkBase.TrimEnd('#')}#token={token}";
+
+    /// <summary>Página o enlace profundo de la app que abre la pantalla de la contraseña nueva (recuperación, contrato 1.10.0).</summary>
+    public string RecoveryLinkBase { get; set; } = "https://quickpatch.internal/recuperar";
+
+    public string RecoveryLinkFor(string token) => $"{RecoveryLinkBase.TrimEnd('#')}#token={token}";
+}
+
+/// <summary>
 /// Tenant del canal (sección <c>Channel</c>). En el registro y el login el tenant se resuelve por el canal y no
-/// por el cuerpo (RN-U5, DD 10.3). En el MVP opera un solo tenant, así que el canal es la instancia desplegada.
+/// por el cuerpo (RN-U5, DD 10.3). Cada canal (<c>X-Channel-Id</c>, DD 8.1) apunta a su tenant en <see cref="Tenants"/>
+/// (DEP-09); sin cabecera se usa <see cref="TenantId"/>, el tenant de la instancia.
 /// </summary>
 public sealed class ChannelOptions
 {
     public const string Section = "Channel";
 
+    /// <summary>Tenant de las peticiones sin <c>X-Channel-Id</c> y de los usuarios iniciales.</summary>
     public Guid TenantId { get; set; }
+
+    /// <summary>Canal → tenant (<c>Channel__Tenants__quickpatch-mobile</c>). El canal no distingue mayúsculas.</summary>
+    public Dictionary<string, Guid> Tenants { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Tenant del canal: el del mapa si llega <paramref name="channelId"/>, o <see cref="TenantId"/> si no llega.
+    /// Con el mapa vacío (un solo tenant, DD 10.3) todos los canales van a <see cref="TenantId"/>; con el mapa
+    /// configurado, un canal que no está en él no cae en el tenant por defecto, para no registrar a nadie en otra empresa.
+    /// </summary>
+    public bool TryResolve(string? channelId, out Guid tenantId)
+    {
+        if (string.IsNullOrWhiteSpace(channelId) || Tenants.Count == 0)
+        {
+            tenantId = TenantId;
+        }
+        else if (!Tenants.TryGetValue(channelId.Trim(), out tenantId))
+        {
+            tenantId = Guid.Empty;
+        }
+
+        return tenantId != Guid.Empty;
+    }
 }

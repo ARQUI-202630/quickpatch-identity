@@ -9,14 +9,25 @@ BEGIN
     IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'identity_platform') THEN
         CREATE ROLE identity_platform NOLOGIN BYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'identity_outbox') THEN
+        CREATE ROLE identity_outbox NOLOGIN BYPASSRLS;
+    END IF;
 END
 $$;
 
-GRANT USAGE ON SCHEMA public TO identity_app, identity_platform;
+GRANT USAGE ON SCHEMA public TO identity_app, identity_platform, identity_outbox;
 
 -- Rol del servicio: todo bajo RLS. Sobre tenants solo lectura: ningún tenant puede modificarse a sí mismo.
 GRANT SELECT ON tenants TO identity_app;
 GRANT SELECT, INSERT, UPDATE ON users, technician_profiles TO identity_app;
+-- Invitaciones del equipo del proveedor (contrato 1.7.0): solo el hash del token; nunca se borran.
+GRANT SELECT, INSERT, UPDATE ON password_setup_tokens TO identity_app;
+-- Recuperación de la contraseña (contrato 1.10.0, SCRUM-625): solicitudes para el admin_tenant y límite por correo
+-- (solo el hash del correo). Ninguna se borra desde el servicio.
+GRANT SELECT, INSERT, UPDATE ON password_recovery_requests TO identity_app;
+GRANT SELECT, INSERT ON password_recovery_attempts TO identity_app;
+-- Empresas cliente (DD 5.19, SCRUM-66): la razón social y el NIT no se editan en el MVP.
+GRANT SELECT, INSERT ON client_companies TO identity_app;
 
 -- Auditoría (DD 5.14): el servicio registra y consulta las de su tenant (RLS); nunca las modifica ni las borra.
 GRANT SELECT, INSERT ON audit_logs TO identity_app;
@@ -27,4 +38,13 @@ GRANT SELECT, INSERT ON audit_logs TO identity_app;
 GRANT SELECT, INSERT, UPDATE ON tenants TO identity_platform;
 GRANT SELECT ON users, technician_profiles TO identity_platform;
 GRANT SELECT, INSERT ON audit_logs TO identity_platform;
+-- El cambio de estado de un tenant encola tenant.status-changed en la misma transacción (ADR-007, SCRUM-509). El evento
+-- lleva el tenant que cambió, no el de la sesión: identity_platform (BYPASSRLS) lo inserta sin la política de tenant.
+GRANT INSERT ON outbox_events TO identity_platform;
 GRANT identity_platform TO identity_app WITH INHERIT FALSE, SET TRUE;
+
+-- Transactional Outbox (ADR-007, DD 5.15): el servicio inserta los eventos de su tenant (RLS); solo el publicador
+-- los lee y marca como publicados, con SET LOCAL ROLE identity_outbox dentro de su transacción.
+GRANT INSERT ON outbox_events TO identity_app;
+GRANT SELECT, UPDATE ON outbox_events TO identity_outbox;
+GRANT identity_outbox TO identity_app WITH INHERIT FALSE, SET TRUE;

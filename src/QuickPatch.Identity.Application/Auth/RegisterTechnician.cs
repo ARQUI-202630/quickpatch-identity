@@ -1,10 +1,14 @@
 using QuickPatch.Identity.Application.Abstractions;
+using QuickPatch.Identity.Application.Events;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Users;
 
 namespace QuickPatch.Identity.Application.Auth;
 
-/// <summary>Registro de técnico o proveedor (RF-02). <see cref="TenantId"/> es el tenant del canal (RN-U5).</summary>
+/// <summary>
+/// Registro de técnico o proveedor (RF-02). <see cref="TenantId"/> es el tenant del canal (RN-U5);
+/// <see cref="CorrelationId"/> viaja en el evento <c>technician.registered</c>.
+/// </summary>
 public sealed record RegisterTechnicianCommand(
     Guid TenantId,
     string? Email,
@@ -13,7 +17,8 @@ public sealed record RegisterTechnicianCommand(
     string? Phone,
     string? DocumentId,
     Guid? SpecialtyId,
-    string? Role);
+    string? Role,
+    Guid CorrelationId = default);
 
 public abstract record RegisterTechnicianResult
 {
@@ -27,14 +32,15 @@ public abstract record RegisterTechnicianResult
 }
 
 /// <summary>
-/// Crea el usuario y su perfil en <c>pendiente</c> en la misma transacción. La publicación de
-/// <c>technician.registered</c> (propuesta P-01 del DD) queda para cuando el equipo apruebe esa propuesta.
+/// Crea el usuario, su perfil en <c>pendiente</c> y el evento <c>technician.registered</c> en la misma transacción
+/// (Outbox, ADR-007): Matching arma con él su proyección del técnico (P-01, DD V4).
 /// </summary>
 public sealed class RegisterTechnicianHandler(
     ITenantUnitOfWork unitOfWork,
     ITenantRepository tenants,
     IUserRepository users,
     ITechnicianProfileRepository profiles,
+    IOutbox outbox,
     IPasswordHasher hasher,
     TimeProvider clock)
 {
@@ -74,6 +80,8 @@ public sealed class RegisterTechnicianHandler(
                     var profile = TechnicianProfile.CreatePending(user.Id, command.TenantId, command.SpecialtyId!.Value, now);
                     users.Add(user);
                     profiles.Add(profile);
+                    var correlationId = command.CorrelationId == Guid.Empty ? Guid.CreateVersion7(now) : command.CorrelationId;
+                    outbox.Enqueue(TechnicianRegisteredEvent.From(profile, correlationId, now));
                     return new RegisterTechnicianResult.Registered(user, profile);
                 },
                 cancellationToken);

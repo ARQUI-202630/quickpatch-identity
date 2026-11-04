@@ -27,6 +27,6 @@ La llave pública correspondiente (`openssl rsa -in identity-private.pem -pubout
 ## Primer despliegue
 
 1. Base: `db_identity` con dueño `identity_migrator` y el rol `identity_app` (Ansible).
-2. `kubectl apply -f deploy/k8s/identity.yaml`. El pod queda esperando la imagen (`:pendiente`).
+2. `kubectl apply -f deploy/k8s/identity.yaml`. El pod queda esperando la imagen (`:pendiente`). Antes de aplicarlo a mano hay que reemplazar los marcadores `<vm-mensajeria>` y `<host-panel>` (host del panel del ambiente: `qa.quickpatch.internal` en QA); el playbook `primer-despliegue-servicios.yml` de `quickpatch` lo hace solo.
 3. Push a `release/*`: el pipeline publica la imagen y la fija en el Deployment; el init container aplica las migraciones.
 4. Solo la primera vez, un administrador de la base ejecuta `db/roles.sql` (permisos de `identity_app`) y el alta del tenant (`db/seed-tenant.example.sql`, con el id de `Channel__TenantId`), y reinicia el servicio con `kubectl -n quickpatch rollout restart deployment/identity` para que cree el administrador inicial.

@@ -13,9 +13,20 @@ data:
   Jwt__Issuer: quickpatch-identity
   Jwt__Audience: quickpatch
   Jwt__Lifetime: "01:00:00"
-  # Tenant del canal (MVP con un solo tenant, DD 10.3). Debe existir en la tabla tenants.
+  # Tenant de las peticiones sin X-Channel-Id (DD 10.3). Debe existir en la tabla tenants.
   Channel__TenantId: "00000000-0000-0000-0000-000000000001"
+  # Canal -> tenant (RN-U5, DEP-09). Con el mapa definido, un canal que no esté aquí recibe 503 canal-sin-tenant.
+  Channel__Tenants__quickpatch-mobile: "00000000-0000-0000-0000-000000000001"
+  Channel__Tenants__quickpatch-web: "00000000-0000-0000-0000-000000000001"
+  # Enlace de la invitación del equipo del proveedor (contrato 1.7.0): abre la pantalla del panel donde el técnico define su
+  # contraseña. El playbook reemplaza <host-panel> por el host del panel de cada ambiente (qa.quickpatch.internal en QA).
+  Invitations__LinkBase: "https://<host-panel>/activar"
+  # Enlace de recuperación de la contraseña (contrato 1.10.0, SCRUM-623): abre /recuperar en el panel del mismo ambiente.
+  Invitations__RecoveryLinkBase: "https://<host-panel>/recuperar"
   Bootstrap__AdminFullName: Administrador QUICKPATCH
+  # Kafka (ADR-007): el playbook reemplaza <vm-mensajeria>. El publicador del Outbox lee con identity_outbox.
+  Kafka__BootstrapServers: "<vm-mensajeria>:9092"
+  Outbox__PublisherRole: "identity_outbox"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -63,6 +74,9 @@ spec:
               valueFrom: { secretKeyRef: { name: identity-secretos, key: app-connection } }
             - name: Jwt__PrivateKeyPem
               valueFrom: { secretKeyRef: { name: identity-secretos, key: jwt-private-key } }
+            # Clave del HMAC del correo en la recuperación de contraseña (SCRUM-625). Sin ella Identity no arranca.
+            - name: PasswordRecovery__EmailHashKey
+              valueFrom: { secretKeyRef: { name: identity-secretos, key: recovery-email-hash-key } }
             - name: Bootstrap__AdminEmail
               valueFrom: { secretKeyRef: { name: identity-secretos, key: admin-email, optional: true } }
             - name: Bootstrap__AdminPassword
@@ -71,13 +85,17 @@ spec:
               valueFrom: { secretKeyRef: { name: identity-secretos, key: platform-admin-email, optional: true } }
             - name: Bootstrap__PlatformAdminPassword
               valueFrom: { secretKeyRef: { name: identity-secretos, key: platform-admin-password, optional: true } }
+          # timeoutSeconds: sin él Kubernetes espera 1 s; bajo carga en QA (28 oct 2026, k6) las sondas daban
+          # «context deadline exceeded» y el liveness reiniciaba el pod tras 3 fallos seguidos (SCRUM-515).
           readinessProbe:
             httpGet: { path: /health/ready, port: http }
             periodSeconds: 10
+            timeoutSeconds: 3
           livenessProbe:
             httpGet: { path: /health/live, port: http }
             initialDelaySeconds: 10
             periodSeconds: 20
+            timeoutSeconds: 3
           # Pendiente de medición (Documento de Infraestructura, 5.6); límite inicial dentro del presupuesto de VM3.
           resources:
             requests: { cpu: 100m, memory: 160Mi }
@@ -109,3 +127,9 @@ spec:
           - { path: /v1/auth, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/users, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
           - { path: /v1/platform, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          - { path: /v1/admin/technicians, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          # Bandeja de recuperación de contraseña del admin_tenant y generación del enlace (contrato 1.10.0, SCRUM-625). Sin esta regla
+          # Traefik responde 404 aunque Identity tenga las rutas: /v1/admin/technicians no las cubre.
+          - { path: /v1/admin/password-recovery-requests, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          - { path: /v1/providers, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }
+          - { path: /v1/companies, pathType: Prefix, backend: { service: { name: identity, port: { name: http } } } }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using QuickPatch.Identity.Application.Abstractions;
+using QuickPatch.Identity.Application.Events;
 using QuickPatch.Identity.Domain.Audit;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Tenants;
@@ -12,6 +13,62 @@ public sealed class ListTenantsHandler(IPlatformUnitOfWork unitOfWork, IPlatform
 {
     public Task<IReadOnlyList<Tenant>> HandleAsync(CancellationToken cancellationToken) =>
         unitOfWork.ExecuteAsync(tenants.ListAsync, cancellationToken);
+}
+
+/// <summary>Creación de un tenant por el administrador de la plataforma (RF-21, contrato 1.5.0).</summary>
+public sealed record CreateTenantCommand(string? Name, string? Nit, Guid ActorUserId, string? CorrelationId);
+
+public abstract record CreateTenantResult
+{
+    public sealed record Created(Tenant Tenant) : CreateTenantResult;
+
+    public sealed record NitTaken : CreateTenantResult;
+}
+
+/// <summary>
+/// Crea la empresa oferente activa y registra <c>crear_tenant</c> en <c>audit_logs</c> en la misma transacción de
+/// plataforma (DD 10.4). No crea usuarios ni el canal del tenant (RN-U5, DEP-09).
+/// </summary>
+public sealed class CreateTenantHandler(
+    IPlatformUnitOfWork unitOfWork,
+    IPlatformTenantRepository tenants,
+    IAuditLog audit,
+    TimeProvider clock)
+{
+    public async Task<CreateTenantResult> HandleAsync(CreateTenantCommand command, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var now = clock.GetUtcNow();
+        var tenant = Tenant.Create(command.Name, command.Nit, now);
+
+        try
+        {
+            return await unitOfWork.ExecuteAsync<CreateTenantResult>(
+                async ct =>
+                {
+                    if (await tenants.NitExistsAsync(tenant.Nit, ct))
+                    {
+                        return new CreateTenantResult.NitTaken();
+                    }
+
+                    tenants.Add(tenant);
+                    audit.Add(new AuditEntry(
+                        Guid.CreateVersion7(now),
+                        tenantId: null,
+                        command.ActorUserId,
+                        AuditEntry.CreateTenant,
+                        tenant.Id,
+                        JsonSerializer.Serialize(new { nombre = tenant.Name, nit = tenant.Nit, correlationId = command.CorrelationId }),
+                        now));
+                    return new CreateTenantResult.Created(tenant);
+                },
+                cancellationToken);
+        }
+        catch (DuplicateNitException)
+        {
+            return new CreateTenantResult.NitTaken();
+        }
+    }
 }
 
 /// <summary>
@@ -33,6 +90,7 @@ public sealed class UpdateTenantStatusHandler(
     IPlatformUnitOfWork unitOfWork,
     IPlatformTenantRepository tenants,
     IAuditLog audit,
+    IOutbox outbox,
     TimeProvider clock)
 {
     public async Task<UpdateTenantStatusResult> HandleAsync(UpdateTenantStatusCommand command, CancellationToken cancellationToken)
@@ -63,6 +121,7 @@ public sealed class UpdateTenantStatusHandler(
                 var anterior = tenant.Status;
                 if (tenant.ChangeStatus(command.Status!))
                 {
+                    var now = clock.GetUtcNow();
                     audit.Add(new AuditEntry(
                         Guid.CreateVersion7(),
                         tenantId: null,
@@ -70,7 +129,11 @@ public sealed class UpdateTenantStatusHandler(
                         command.Status == Tenant.Active ? AuditEntry.ActivateTenant : AuditEntry.DeactivateTenant,
                         tenant.Id,
                         JsonSerializer.Serialize(new { anterior, nuevo = tenant.Status, correlationId = command.CorrelationId }),
-                        clock.GetUtcNow()));
+                        now));
+
+                    // Misma transacción que el cambio (ADR-007). Repetir el estado no llega aquí, así que no publica (SCRUM-508).
+                    var correlationId = Guid.TryParse(command.CorrelationId, out var parsed) ? parsed : Guid.CreateVersion7(now);
+                    outbox.Enqueue(TenantStatusChangedEvent.From(tenant, correlationId, now));
                 }
 
                 return new UpdateTenantStatusResult.Updated(tenant);

@@ -41,8 +41,10 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("Jwt:PrivateKeyPem", TestKeys.PrivateKeyPem);
+        builder.UseSetting("PasswordRecovery:EmailHashKey", TestKeys.EmailHashKey);
         builder.UseSetting("Channel:TenantId", ActiveTenant.ToString());
         builder.UseSetting("ConnectionStrings:Identity", "Host=sin-base-en-pruebas-unitarias");
+        builder.UseSetting("DevelopmentUsers:Enabled", "false");
         builder.ConfigureTestServices(services =>
         {
             services.AddSingleton<ITenantUnitOfWork>(Store);
@@ -52,6 +54,10 @@ public sealed class IdentityApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IPlatformUnitOfWork>(Store);
             services.AddSingleton<IPlatformTenantRepository>(Store);
             services.AddSingleton<IAuditLog>(Store);
+            services.AddSingleton<IOutbox>(Store);
+            services.AddSingleton<IPasswordSetupTokenRepository>(Store);
+            services.AddSingleton<IClientCompanyRepository>(Store);
+            services.AddSingleton<IPasswordRecoveryRepository>(Store);
             services.AddSingleton<IPasswordHasher, FakeHasher>();
             services.Configure<HealthCheckServiceOptions>(o => o.Registrations.Clear());
         });
@@ -245,6 +251,8 @@ public class IdentityApiTests(IdentityApiFactory factory) : IClassFixture<Identi
         Assert.Equal("https://quickpatch.internal/problems/documento-registrado", (await Json(repetido)).GetProperty("type").GetString());
         Assert.Equal("pendiente", (await Json(me)).GetProperty("verificationStatus").GetString());
         Assert.Equal("tecnico", (await Json(me)).GetProperty("role").GetString());
+        // El login también trae el estado: la app muestra el aviso de verificación sin esperar a /users/me.
+        Assert.Equal("pendiente", (await Json(login)).GetProperty("user").GetProperty("verificationStatus").GetString());
     }
 
     [Fact]

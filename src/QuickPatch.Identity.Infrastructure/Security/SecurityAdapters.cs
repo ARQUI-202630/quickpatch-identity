@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -33,8 +34,35 @@ public sealed class BCryptPasswordHasher(IOptions<PasswordOptions> options) : IP
 }
 
 /// <summary>
+/// HMAC-SHA256 del correo normalizado con la clave de Identity (<see cref="PasswordRecoveryOptions.EmailHashKey"/>).
+/// Sin la clave, el hash guardado en <c>password_recovery_attempts</c> no se puede revertir con un diccionario de correos.
+/// </summary>
+public sealed class HmacEmailHasher : IEmailHasher
+{
+    private readonly byte[] key;
+
+    public HmacEmailHasher(IOptions<PasswordRecoveryOptions> options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        var configured = options.Value.EmailHashKey;
+        if (string.IsNullOrWhiteSpace(configured) || configured.Length < PasswordRecoveryOptions.MinKeyLength)
+        {
+            throw new InvalidOperationException("Falta PasswordRecovery:EmailHashKey: Identity no puede limitar la recuperación de contraseña.");
+        }
+
+        key = Encoding.UTF8.GetBytes(configured);
+    }
+
+    public string Hash(string normalizedEmail)
+    {
+        ArgumentNullException.ThrowIfNull(normalizedEmail);
+        return Convert.ToHexStringLower(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(normalizedEmail)));
+    }
+}
+
+/// <summary>
 /// Firma el JWT con RS256 (llave privada solo en Identity). Claims: <c>sub</c>, <c>tenant_id</c>, <c>role</c>,
-/// <c>iss</c>, <c>aud</c>, <c>exp</c> y <c>jti</c>.
+/// <c>iss</c>, <c>aud</c>, <c>exp</c> y <c>jti</c>; para <c>empresa_contacto</c>, también <c>company_id</c> (contrato 1.8.0).
 /// </summary>
 public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
 {
@@ -75,6 +103,18 @@ public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
     {
         ArgumentNullException.ThrowIfNull(user);
         var now = clock.GetUtcNow();
+        var claims = new Dictionary<string, object>
+        {
+            ["sub"] = user.Id.ToString(),
+            ["tenant_id"] = user.TenantId.ToString(),
+            ["role"] = user.Role,
+            ["jti"] = Guid.NewGuid().ToString(),
+        };
+        if (user.CompanyId is { } companyId)
+        {
+            claims["company_id"] = companyId.ToString();
+        }
+
         var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Issuer = options.Issuer,
@@ -83,13 +123,7 @@ public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
             NotBefore = now.UtcDateTime,
             Expires = now.Add(options.Lifetime).UtcDateTime,
             SigningCredentials = credentials,
-            Claims = new Dictionary<string, object>
-            {
-                ["sub"] = user.Id.ToString(),
-                ["tenant_id"] = user.TenantId.ToString(),
-                ["role"] = user.Role,
-                ["jti"] = Guid.NewGuid().ToString(),
-            },
+            Claims = claims,
         });
 
         return new IssuedToken(token, (int)options.Lifetime.TotalSeconds);

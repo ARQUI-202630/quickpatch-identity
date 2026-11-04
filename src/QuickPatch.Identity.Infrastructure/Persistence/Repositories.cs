@@ -7,6 +7,7 @@ using Npgsql;
 
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Domain.Audit;
+using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
@@ -48,6 +49,10 @@ public sealed class TenantUnitOfWork(IdentityDbContext db) : ITenantUnitOfWork
         {
             throw new DuplicateDocumentException("El documento ya está registrado en el tenant.", ex);
         }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: UniqueViolation, ConstraintName: "ux_client_companies_tenant_nit" })
+        {
+            throw new DuplicateCompanyNitException("Ya existe una empresa con ese NIT en el tenant.", ex);
+        }
 
         await transaction.CommitAsync(cancellationToken);
         return result;
@@ -79,13 +84,224 @@ public sealed class UserRepository(IdentityDbContext db) : IUserRepository
     public Task<User?> FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
         db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
 
+    public async Task<IReadOnlyList<User>> FindByIdsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        await db.Users.AsNoTracking().Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
+
+    public async Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var rows = await db.Users
+            .FromSql($"SELECT * FROM users WHERE id = {id} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
     public void Add(User user) => db.Users.Add(user);
+}
+
+public sealed class PasswordSetupTokenRepository(IdentityDbContext db) : IPasswordSetupTokenRepository
+{
+    public async Task<PasswordSetupToken?> FindByHashForUpdateAsync(string tokenHash, CancellationToken cancellationToken)
+    {
+        var rows = await db.PasswordSetupTokens
+            .FromSql($"SELECT * FROM password_setup_tokens WHERE token_hash = {tokenHash} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
+    public async Task<IReadOnlyList<PasswordSetupToken>> ListUsableForUpdateAsync(
+        Guid userId, string purpose, DateTimeOffset now, CancellationToken cancellationToken) =>
+        await db.PasswordSetupTokens
+            .FromSql($"SELECT * FROM password_setup_tokens WHERE user_id = {userId} AND purpose = {purpose} AND used_at IS NULL AND expires_at > {now} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<PasswordSetupToken>> ListUnusedForUpdateAsync(
+        Guid userId, string purpose, CancellationToken cancellationToken) =>
+        await db.PasswordSetupTokens
+            .FromSql($"SELECT * FROM password_setup_tokens WHERE user_id = {userId} AND purpose = {purpose} AND used_at IS NULL FOR UPDATE")
+            .ToListAsync(cancellationToken);
+
+    // Solo invitaciones: un enlace de recuperación no dice si el usuario definió su contraseña al registrarse.
+    public Task<bool> WasUsedAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.PasswordSetupTokens.AnyAsync(
+            x => x.UserId == userId && x.Purpose == PasswordSetupToken.InvitationPurpose && x.UsedAt != null, cancellationToken);
+
+    public Task<bool> HasAnyAsync(Guid userId, CancellationToken cancellationToken) =>
+        db.PasswordSetupTokens.AnyAsync(x => x.UserId == userId && x.Purpose == PasswordSetupToken.InvitationPurpose, cancellationToken);
+
+    public void Add(PasswordSetupToken token) => db.PasswordSetupTokens.Add(token);
+}
+
+/// <summary>Recuperación de la contraseña (contrato 1.10.0, SCRUM-625), bajo RLS.</summary>
+public sealed class PasswordRecoveryRepository(IdentityDbContext db) : IPasswordRecoveryRepository
+{
+    public async Task<DateTimeOffset?> TryRegisterAttemptAsync(
+        Guid tenantId, string emailHash, DateTimeOffset now, int maxAttempts, TimeSpan window, CancellationToken cancellationToken)
+    {
+        // Candado de la transacción por correo: dos pedidos simultáneos del mismo correo se cuentan uno después del otro.
+        var lockKey = $"password-recovery:{tenantId}:{emailHash}";
+        await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtextextended({lockKey}, 0))", cancellationToken);
+
+        var since = now - window;
+        var recent = await db.PasswordRecoveryAttempts.AsNoTracking()
+            .Where(x => x.EmailHash == emailHash && x.AttemptedAt > since)
+            .OrderBy(x => x.AttemptedAt)
+            .Select(x => x.AttemptedAt)
+            .ToListAsync(cancellationToken);
+        if (recent.Count >= maxAttempts)
+        {
+            // Podrá pedirse otra vez cuando salga de la ventana el intento que deja el conteo por debajo del límite.
+            return recent[recent.Count - maxAttempts] + window;
+        }
+
+        db.PasswordRecoveryAttempts.Add(new PasswordRecoveryAttemptRecord
+        {
+            Id = Guid.CreateVersion7(now),
+            TenantId = tenantId,
+            EmailHash = emailHash,
+            AttemptedAt = now,
+        });
+        return null;
+    }
+
+    public async Task<PasswordRecoveryRequest?> FindPendingForUserForUpdateAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var pending = PasswordRecoveryRequest.Pending;
+        var rows = await db.PasswordRecoveryRequests
+            .FromSql($"SELECT * FROM password_recovery_requests WHERE user_id = {userId} AND status = {pending} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
+    public async Task<PasswordRecoveryRequest?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var rows = await db.PasswordRecoveryRequests
+            .FromSql($"SELECT * FROM password_recovery_requests WHERE id = {id} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
+    public async Task<PasswordRecoveryPage> ListPendingAsync(int page, int size, CancellationToken cancellationToken)
+    {
+        var pending = from r in db.PasswordRecoveryRequests.AsNoTracking()
+                      join u in db.Users.AsNoTracking() on r.UserId equals u.Id
+                      where r.Status == PasswordRecoveryRequest.Pending
+                      select new { r.Id, r.UserId, u.Email, u.FullName, u.Role, r.RequestedAt };
+        var total = await pending.CountAsync(cancellationToken);
+        if (page - 1 > (total - 1) / size)
+        {
+            return new PasswordRecoveryPage([], page, size, total);
+        }
+
+        var rows = await pending
+            .OrderBy(x => x.RequestedAt)
+            .ThenBy(x => x.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .ToListAsync(cancellationToken);
+        return new PasswordRecoveryPage(
+            [.. rows.Select(x => new PasswordRecoveryView(x.Id, x.UserId, x.Email, x.FullName, x.Role, x.RequestedAt))], page, size, total);
+    }
+
+    public void Add(PasswordRecoveryRequest request) => db.PasswordRecoveryRequests.Add(request);
+}
+
+public sealed class ClientCompanyRepository(IdentityDbContext db) : IClientCompanyRepository
+{
+    public Task<ClientCompany?> FindAsync(Guid companyId, CancellationToken cancellationToken) =>
+        db.ClientCompanies.AsNoTracking().SingleOrDefaultAsync(x => x.Id == companyId, cancellationToken);
+
+    public Task<bool> NitExistsAsync(string nit, CancellationToken cancellationToken) =>
+        db.ClientCompanies.AnyAsync(x => x.Nit == nit, cancellationToken);
+
+    public async Task<CompanyUserPage> ListUsersAsync(Guid companyId, int page, int size, CancellationToken cancellationToken)
+    {
+        var members = db.Users.AsNoTracking().Where(x => x.CompanyId == companyId);
+        var total = await members.CountAsync(cancellationToken);
+        var items = await members
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(u => new CompanyUserView(
+                u.Id,
+                u.Email,
+                u.FullName,
+                u.Phone,
+                !db.PasswordSetupTokens.Any(t => t.UserId == u.Id) || db.PasswordSetupTokens.Any(t => t.UserId == u.Id && t.UsedAt != null),
+                u.CreatedAt))
+            .ToListAsync(cancellationToken);
+        return new CompanyUserPage(items, page, size, total);
+    }
+
+    public void Add(ClientCompany company) => db.ClientCompanies.Add(company);
 }
 
 public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnicianProfileRepository
 {
     public Task<TechnicianProfile?> FindAsync(Guid userId, CancellationToken cancellationToken) =>
         db.TechnicianProfiles.AsNoTracking().SingleOrDefaultAsync(x => x.UserId == userId, cancellationToken);
+
+    public async Task<TechnicianProfile?> FindForUpdateAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var rows = await db.TechnicianProfiles
+            .FromSql($"SELECT * FROM technician_profiles WHERE user_id = {userId} FOR UPDATE")
+            .ToListAsync(cancellationToken);
+        return rows.SingleOrDefault();
+    }
+
+    public async Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken)
+    {
+        var profiles = db.TechnicianProfiles.AsNoTracking();
+        if (verificationStatus is not null)
+        {
+            profiles = profiles.Where(x => x.VerificationStatus == verificationStatus);
+        }
+
+        var query = profiles.Join(db.Users.AsNoTracking(), p => p.UserId, u => u.Id, (p, u) => new { Profile = p, User = u });
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(x => x.Profile.CreatedAt)
+            .ThenBy(x => x.Profile.UserId)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(x => new AdminTechnicianView(
+                x.User.Id,
+                x.User.FullName,
+                x.User.Email,
+                x.User.Phone,
+                x.User.Role,
+                x.User.DocumentId!,
+                x.Profile.SpecialtyId,
+                x.Profile.VerificationStatus,
+                x.Profile.VerificationReason,
+                x.Profile.CreatedAt))
+            .ToListAsync(cancellationToken);
+        return new TechnicianPage(items, page, size, total);
+    }
+
+    public async Task<ProviderTechnicianPage> ListTeamAsync(Guid providerId, bool? active, int page, int size, CancellationToken cancellationToken)
+    {
+        var profiles = db.TechnicianProfiles.AsNoTracking().Where(x => x.ProviderId == providerId);
+        profiles = active switch
+        {
+            true => profiles.Where(x => x.VerificationStatus == VerificationStatus.Aprobado),
+            false => profiles.Where(x => x.VerificationStatus != VerificationStatus.Aprobado),
+            null => profiles,
+        };
+
+        var query = profiles.Join(db.Users.AsNoTracking(), p => p.UserId, u => u.Id, (p, u) => new { Profile = p, User = u });
+
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(x => x.Profile.CreatedAt)
+            .ThenBy(x => x.Profile.UserId)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(x => new ProviderTechnicianView(x.User.Id, x.User.FullName, x.Profile.SpecialtyId, x.Profile.VerificationStatus))
+            .ToListAsync(cancellationToken);
+        return new ProviderTechnicianPage(items, page, size, total);
+    }
 
     public void Add(TechnicianProfile profile) => db.TechnicianProfiles.Add(profile);
 }
@@ -110,7 +326,15 @@ public sealed partial class PlatformUnitOfWork(IdentityDbContext db, IOptions<Pl
 #pragma warning restore EF1002
 
         var result = await work(cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505", ConstraintName: "ux_tenants_nit" })
+        {
+            throw new DuplicateNitException("Ya existe un tenant con ese NIT.", ex);
+        }
+
         await transaction.CommitAsync(cancellationToken);
         return result;
     }
@@ -131,6 +355,11 @@ public sealed class PlatformTenantRepository(IdentityDbContext db) : IPlatformTe
             .ToListAsync(cancellationToken);
         return rows.SingleOrDefault();
     }
+
+    public Task<bool> NitExistsAsync(string nit, CancellationToken cancellationToken) =>
+        db.Tenants.AnyAsync(x => x.Nit == nit, cancellationToken);
+
+    public void Add(Tenant tenant) => db.Tenants.Add(tenant);
 }
 
 public sealed class AuditLog(IdentityDbContext db) : IAuditLog
