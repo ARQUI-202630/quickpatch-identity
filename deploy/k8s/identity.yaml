@@ -21,6 +21,8 @@ data:
   # Enlace de la invitación del equipo del proveedor (contrato 1.7.0): abre la pantalla del panel donde el técnico define su
   # contraseña. El playbook reemplaza <host-panel> por el host del panel de cada ambiente (qa.quickpatch.internal en QA).
   Invitations__LinkBase: "https://<host-panel>/activar"
+  # Enlace de recuperación de la contraseña (contrato 1.10.0, SCRUM-623): abre /recuperar en el panel del mismo ambiente.
+  Invitations__RecoveryLinkBase: "https://<host-panel>/recuperar"
   Bootstrap__AdminFullName: Administrador QUICKPATCH
   # Kafka (ADR-007): el playbook reemplaza <vm-mensajeria>. El publicador del Outbox lee con identity_outbox.
   Kafka__BootstrapServers: "<vm-mensajeria>:9092"
