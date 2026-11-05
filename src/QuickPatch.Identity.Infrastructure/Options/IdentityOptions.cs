@@ -30,6 +30,25 @@ public sealed class PasswordRecoveryOptions
     public string EmailHashKey { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Cifrado de la contraseña en el cliente (sección <c>PasswordEncryption</c>, contrato 1.11.0). La app y el panel la
+/// cifran con RSA-OAEP-256 y la llave pública de <c>GET /v1/auth/password-key</c>, así que no viaja legible ni dentro de
+/// la red del laboratorio, donde VM1 ya terminó el TLS. La llave es otra que la del JWT.
+/// </summary>
+public sealed class PasswordEncryptionOptions
+{
+    public const string Section = "PasswordEncryption";
+
+    /// <summary>
+    /// Llave privada RSA en PEM, como secreto del ambiente (<c>PasswordEncryption__PrivateKeyPem</c>). Vacía, Identity
+    /// genera una al arrancar: sirve con una réplica, porque cada réplica tendría la suya.
+    /// </summary>
+    public string PrivateKeyPem { get; set; } = string.Empty;
+
+    /// <summary>Si es verdadero, rechaza la contraseña en claro (<c>password</c>) y solo acepta <c>encryptedPassword</c>.</summary>
+    public bool RequireEncrypted { get; set; }
+}
+
 /// <summary>Hash de contraseñas (sección <c>Passwords</c>).</summary>
 public sealed class PasswordOptions
 {

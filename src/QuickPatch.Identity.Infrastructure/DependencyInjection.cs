@@ -59,6 +59,8 @@ public static class DependencyInjection
         services.AddScoped<IOutbox, EfOutbox>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton<IEmailHasher, HmacEmailHasher>();
+        services.Configure<PasswordEncryptionOptions>(configuration.GetSection(PasswordEncryptionOptions.Section));
+        services.AddSingleton<PasswordEncryptionKey>();
         services.AddSingleton<RsaTokenIssuer>();
         services.AddSingleton<ITokenIssuer>(sp => sp.GetRequiredService<RsaTokenIssuer>());
 
