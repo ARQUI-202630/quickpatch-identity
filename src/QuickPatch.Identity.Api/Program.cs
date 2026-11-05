@@ -25,6 +25,7 @@ builder.Services.AddHealthChecks();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddQuickPatchAuthentication(builder.Configuration);
+builder.Services.AddSingleton<PasswordTransport>();
 
 // Administrador inicial del tenant al desplegar (datos desde un secreto; vacío = no se crea).
 builder.Services.Configure<BootstrapOptions>(builder.Configuration.GetSection(BootstrapOptions.Section));

@@ -62,6 +62,7 @@ public static class CompanyEndpoints
         RegisterCompanyRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         RegisterCompanyHandler handler,
         CancellationToken cancellationToken)
     {
@@ -75,6 +76,11 @@ public static class CompanyEndpoints
 
         var data = body.Company;
         var user = body.User;
+        if (!passwords.TryResolve(user?.Password, user?.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
         try
         {
             var result = await handler.HandleAsync(
@@ -85,7 +91,7 @@ public static class CompanyEndpoints
                     data?.ContactEmail,
                     data?.ContactPhone,
                     user?.Email,
-                    user?.Password,
+                    password,
                     user?.FullName,
                     user?.Phone),
                 cancellationToken);

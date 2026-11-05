@@ -17,12 +17,15 @@ using QuickPatch.Identity.Infrastructure.Options;
 
 namespace QuickPatch.Identity.Api.Endpoints;
 
-public sealed record RegisterClientRequest(string? Email, string? Password, string? FullName, string? Phone);
+/// <summary>Esquema <c>RegisterClientRequest</c>; desde 1.11.0 la contraseña puede llegar cifrada.</summary>
+public sealed record RegisterClientRequest(
+    string? Email, string? Password, string? FullName, string? Phone, EncryptedPassword? EncryptedPassword = null);
 
 public sealed record RegisterTechnicianRequest(
-    string? Email, string? Password, string? FullName, string? Phone, string? DocumentId, Guid? SpecialtyId, string? Role);
+    string? Email, string? Password, string? FullName, string? Phone, string? DocumentId, Guid? SpecialtyId, string? Role,
+    EncryptedPassword? EncryptedPassword = null);
 
-public sealed record LoginRequest(string? Email, string? Password);
+public sealed record LoginRequest(string? Email, string? Password, EncryptedPassword? EncryptedPassword = null);
 
 /// <summary>
 /// Esquema <c>UserProfile</c> del contrato; <see cref="VerificationStatus"/> solo para técnicos y proveedores y
@@ -77,7 +80,7 @@ public sealed record ProviderTechnicianCreated(
 }
 
 /// <summary>Esquema <c>PasswordSetupRequest</c> del contrato 1.7.0.</summary>
-public sealed record PasswordSetupRequest(string? Token, string? Password);
+public sealed record PasswordSetupRequest(string? Token, string? Password, EncryptedPassword? EncryptedPassword = null);
 
 /// <summary>Esquema <c>PasswordRecoveryRequest</c> del contrato 1.10.0.</summary>
 public sealed record PasswordRecoveryRequestBody(string? Email);
@@ -94,6 +97,13 @@ public static class IdentityEndpoints
         app.MapPost("/v1/auth/register/technician", RegisterTechnicianAsync).WithName("registerTechnician").AllowAnonymous();
         app.MapPost("/v1/auth/password/setup", SetupPasswordAsync).WithName("setupPassword").AllowAnonymous();
         app.MapPost("/v1/auth/login", LoginAsync).WithName("login").AllowAnonymous();
+
+        // Llave pública para cifrar la contraseña en el cliente (contrato 1.11.0); no depende del tenant.
+        app.MapGet("/v1/auth/password-key", (HttpContext context, PasswordTransport passwords) =>
+        {
+            context.Response.Headers.CacheControl = "no-cache";
+            return Results.Ok(passwords.PublicKey);
+        }).WithName("getPasswordKey").AllowAnonymous();
 
         // Recuperación de la contraseña (contrato 1.10.0, SCRUM-625): el usuario la pide y la confirma sin token; el
         // admin_tenant ve las solicitudes de su tenant (RLS) y genera el enlace.
@@ -140,6 +150,7 @@ public static class IdentityEndpoints
         RegisterClientRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         RegisterClientHandler handler,
         CancellationToken cancellationToken)
     {
@@ -148,10 +159,15 @@ public static class IdentityEndpoints
             return ChannelNotConfigured();
         }
 
+        if (!passwords.TryResolve(body.Password, body.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
         try
         {
             var result = await handler.HandleAsync(
-                new RegisterClientCommand(tenantId, body.Email, body.Password, body.FullName, body.Phone),
+                new RegisterClientCommand(tenantId, body.Email, password, body.FullName, body.Phone),
                 cancellationToken);
 
             return result switch
@@ -171,6 +187,7 @@ public static class IdentityEndpoints
         RegisterTechnicianRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         RegisterTechnicianHandler handler,
         CancellationToken cancellationToken)
     {
@@ -179,13 +196,18 @@ public static class IdentityEndpoints
             return ChannelNotConfigured();
         }
 
+        if (!passwords.TryResolve(body.Password, body.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
         try
         {
             var result = await handler.HandleAsync(
                 new RegisterTechnicianCommand(
                     tenantId,
                     body.Email,
-                    body.Password,
+                    password,
                     body.FullName,
                     body.Phone,
                     body.DocumentId,
@@ -215,6 +237,7 @@ public static class IdentityEndpoints
         LoginRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         LoginHandler handler,
         TimeProvider clock,
         CancellationToken cancellationToken)
@@ -224,7 +247,12 @@ public static class IdentityEndpoints
             return ChannelNotConfigured();
         }
 
-        if (string.IsNullOrWhiteSpace(body.Email) || string.IsNullOrEmpty(body.Password))
+        if (!passwords.TryResolve(body.Password, body.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
+        if (string.IsNullOrWhiteSpace(body.Email) || string.IsNullOrEmpty(password))
         {
             return ValidationProblem(new Dictionary<string, string[]>
             {
@@ -232,7 +260,7 @@ public static class IdentityEndpoints
             });
         }
 
-        var result = await handler.HandleAsync(new LoginCommand(tenantId, body.Email, body.Password), cancellationToken);
+        var result = await handler.HandleAsync(new LoginCommand(tenantId, body.Email, password), cancellationToken);
         return result switch
         {
             LoginResult.Succeeded ok => Results.Ok(new LoginResponse(ok.Token.AccessToken, "Bearer", ok.Token.ExpiresInSeconds, UserProfile.From(ok.User, ok.Profile))),
@@ -534,6 +562,7 @@ public static class IdentityEndpoints
         PasswordSetupRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         SetupPasswordHandler handler,
         CancellationToken cancellationToken)
     {
@@ -542,9 +571,14 @@ public static class IdentityEndpoints
             return ChannelNotConfigured();
         }
 
+        if (!passwords.TryResolve(body.Password, body.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
         try
         {
-            var result = await handler.HandleAsync(new SetupPasswordCommand(tenantId, body.Token, body.Password), cancellationToken);
+            var result = await handler.HandleAsync(new SetupPasswordCommand(tenantId, body.Token, password), cancellationToken);
             return result switch
             {
                 SetupPasswordResult.Done => Results.NoContent(),
@@ -594,6 +628,7 @@ public static class IdentityEndpoints
         PasswordSetupRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         ConfirmPasswordRecoveryHandler handler,
         CancellationToken cancellationToken)
     {
@@ -602,9 +637,14 @@ public static class IdentityEndpoints
             return ChannelNotConfigured();
         }
 
+        if (!passwords.TryResolve(body.Password, body.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
         try
         {
-            var result = await handler.HandleAsync(new ConfirmPasswordRecoveryCommand(tenantId, body.Token, body.Password), cancellationToken);
+            var result = await handler.HandleAsync(new ConfirmPasswordRecoveryCommand(tenantId, body.Token, password), cancellationToken);
             return result switch
             {
                 SetupPasswordResult.Done => Results.NoContent(),
