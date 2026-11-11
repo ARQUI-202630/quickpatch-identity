@@ -6,6 +6,7 @@ using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
 using QuickPatch.Identity.Infrastructure.Messaging;
+using QuickPatch.Transversal.Messaging;
 
 namespace QuickPatch.Identity.Infrastructure.Persistence;
 
@@ -184,21 +185,8 @@ public sealed class IdentityDbContext(DbContextOptions<IdentityDbContext> option
             e.HasIndex(x => new { x.TenantId, x.Action }).HasDatabaseName("ix_audit_logs_tenant_action");
         });
 
-        // Outbox (ADR-007, DD 5.15): mismo modelo que en los demás servicios.
-        modelBuilder.Entity<OutboxEventRecord>(e =>
-        {
-            e.ToTable("outbox_events");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
-            e.Property(x => x.TenantId).HasColumnName("tenant_id");
-            e.Property(x => x.AggregateId).HasColumnName("aggregate_id");
-            e.Property(x => x.EventType).HasColumnName("event_type").HasMaxLength(100);
-            e.Property(x => x.Payload).HasColumnName("payload").HasColumnType("jsonb");
-            e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property(x => x.PublishedAt).HasColumnName("published_at");
-            e.Property(x => x.Attempts).HasColumnName("attempts");
-            e.HasIndex(x => x.CreatedAt).HasDatabaseName("ix_outbox_events_pending").HasFilter("published_at IS NULL");
-        });
+        // Tablas transversales con el mapeo común (ADR-020); las migraciones siguen siendo de este servicio.
+        modelBuilder.MapOutboxEvents();
     }
 }
 

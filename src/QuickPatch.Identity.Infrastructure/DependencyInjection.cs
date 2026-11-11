@@ -9,6 +9,7 @@ using QuickPatch.Identity.Infrastructure.Messaging;
 using QuickPatch.Identity.Infrastructure.Options;
 using QuickPatch.Identity.Infrastructure.Persistence;
 using QuickPatch.Identity.Infrastructure.Security;
+using QuickPatch.Transversal.Messaging;
 
 namespace QuickPatch.Identity.Infrastructure;
 
@@ -79,8 +80,8 @@ public static class DependencyInjection
                 EnableIdempotence = true,
             }).Build());
 
-            services.AddSingleton<OutboxPublisher>();
-            services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher>());
+            services.AddSingleton<OutboxPublisher<IdentityDbContext, OutboxEventRecord>>();
+            services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher<IdentityDbContext, OutboxEventRecord>>());
 
             // Reputación que publica Ranking (ADR-027): se proyecta en technician_profiles.
             services.AddSingleton(_ => new ConsumerBuilder<string, string>(new ConsumerConfig
