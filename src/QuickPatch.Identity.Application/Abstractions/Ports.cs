@@ -169,7 +169,8 @@ public interface ITechnicianProfileRepository
     Task<TechnicianProfile?> FindForUpdateAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>Técnicos y proveedores del tenant de la sesión (RLS), del más antiguo al más reciente.</summary>
-    Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken);
+    /// <summary>Con <paramref name="lowReputation"/> en true, solo los marcados con reputación baja (AC9-E2).</summary>
+    Task<TechnicianPage> ListAsync(string? verificationStatus, bool lowReputation, int page, int size, CancellationToken cancellationToken);
 
     /// <summary>
     /// Equipo de un proveedor (RN-TP4): solo los técnicos con ese <c>provider_id</c>, del más antiguo al más reciente.
@@ -185,7 +186,10 @@ public sealed record ProviderTechnicianView(Guid UserId, string FullName, Guid S
 
 public sealed record ProviderTechnicianPage(IReadOnlyList<ProviderTechnicianView> Items, int Page, int Size, int TotalItems);
 
-/// <summary>Técnico o proveedor tal como lo ve el administrador del tenant (esquema <c>AdminTechnician</c>).</summary>
+/// <summary>
+/// Técnico o proveedor tal como lo ve el administrador del tenant (esquema <c>AdminTechnician</c>). Desde el contrato
+/// 1.12.0 trae la reputación que proyecta Ranking (ADR-027) y la marca de reputación baja (AC9-E2, SCRUM-642).
+/// </summary>
 public sealed record AdminTechnicianView(
     Guid UserId,
     string FullName,
@@ -196,7 +200,10 @@ public sealed record AdminTechnicianView(
     Guid SpecialtyId,
     string VerificationStatus,
     string? VerificationReason,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    decimal? AverageRating,
+    int RatingCount,
+    bool LowReputation);
 
 public sealed record TechnicianPage(IReadOnlyList<AdminTechnicianView> Items, int Page, int Size, int TotalItems);
 

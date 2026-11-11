@@ -66,6 +66,50 @@ public class TechniciansAdminTests(IdentityApiFactory factory) : IClassFixture<I
     }
 
     [Fact]
+    public async Task Listar_TraeLaReputacionYFiltraLaBaja_SinSuspender()
+    {
+        // AC9-E2 (SCRUM-642): promedio menor a 3.0 con al menos 5 calificaciones; Ranking calcula la marca (ADR-027).
+        var bajo = await RegisterAsync();
+        var bueno = await RegisterAsync();
+        var sinCalificar = await RegisterAsync();
+        factory.Store.Profiles.Single(p => p.UserId == bajo).TryApplyReputation(2.4m, 6, true, Now);
+        factory.Store.Profiles.Single(p => p.UserId == bueno).TryApplyReputation(4.8m, 9, false, Now);
+        using var client = ClientAs(Roles.AdminTenant);
+
+        using var todos = await client.GetAsync(new Uri("/v1/admin/technicians?size=100", UriKind.Relative));
+        using var soloBajos = await client.GetAsync(new Uri("/v1/admin/technicians?lowReputation=true&size=100", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, todos.StatusCode);
+        var items = (await todos.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").EnumerateArray().ToList();
+        var itemBajo = items.Single(x => x.GetProperty("userId").GetGuid() == bajo);
+        Assert.Equal(2.4m, itemBajo.GetProperty("averageRating").GetDecimal());
+        Assert.Equal(6, itemBajo.GetProperty("ratingCount").GetInt32());
+        Assert.True(itemBajo.GetProperty("lowReputation").GetBoolean());
+        Assert.Equal("pendiente", itemBajo.GetProperty("verificationStatus").GetString());
+        var itemSinCalificar = items.Single(x => x.GetProperty("userId").GetGuid() == sinCalificar);
+        Assert.Equal(JsonValueKind.Null, itemSinCalificar.GetProperty("averageRating").ValueKind);
+        Assert.Equal(0, itemSinCalificar.GetProperty("ratingCount").GetInt32());
+        Assert.False(itemSinCalificar.GetProperty("lowReputation").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.OK, soloBajos.StatusCode);
+        var filtrados = (await soloBajos.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").EnumerateArray()
+            .Select(x => x.GetProperty("userId").GetGuid()).ToList();
+        Assert.Contains(bajo, filtrados);
+        Assert.DoesNotContain(bueno, filtrados);
+        Assert.DoesNotContain(sinCalificar, filtrados);
+    }
+
+    [Fact]
+    public async Task Listar_FiltroDeReputacionInvalido_400()
+    {
+        using var client = ClientAs(Roles.AdminTenant);
+
+        using var response = await client.GetAsync(new Uri("/v1/admin/technicians?lowReputation=quizas", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Listar_EstadoInvalido_400()
     {
         using var client = ClientAs(Roles.AdminTenant);
