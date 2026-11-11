@@ -8,6 +8,7 @@ using QuickPatch.Identity.Api.Http;
 using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application;
 using QuickPatch.Identity.Infrastructure;
+using QuickPatch.Transversal.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 

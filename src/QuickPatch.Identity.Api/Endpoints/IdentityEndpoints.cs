@@ -14,6 +14,7 @@ using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
 using QuickPatch.Identity.Infrastructure.Options;
+using QuickPatch.Transversal.Http;
 
 namespace QuickPatch.Identity.Api.Endpoints;
 
