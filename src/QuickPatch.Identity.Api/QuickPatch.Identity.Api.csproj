@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\..\shared\dotnet\src\QuickPatch.Transversal.Security\QuickPatch.Transversal.Security.csproj" />
     <ProjectReference Include="..\..\shared\dotnet\src\QuickPatch.Transversal.Http\QuickPatch.Transversal.Http.csproj" />
     <ProjectReference Include="..\QuickPatch.Identity.Application\QuickPatch.Identity.Application.csproj" />
     <ProjectReference Include="..\QuickPatch.Identity.Infrastructure\QuickPatch.Identity.Infrastructure.csproj" />
