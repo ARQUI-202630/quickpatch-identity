@@ -424,6 +424,7 @@ public static class IdentityEndpoints
         HttpContext context,
         ListTechniciansHandler handler,
         string? verificationStatus,
+        bool? lowReputation,
         int? page,
         int? size,
         CancellationToken cancellationToken)
@@ -436,7 +437,7 @@ public static class IdentityEndpoints
         try
         {
             var result = await handler.HandleAsync(
-                new ListTechniciansQuery(actor.TenantId, verificationStatus, page ?? 1, size ?? 20), cancellationToken);
+                new ListTechniciansQuery(actor.TenantId, verificationStatus, page ?? 1, size ?? 20, lowReputation ?? false), cancellationToken);
             return Results.Ok(result);
         }
         catch (DomainValidationException ex)

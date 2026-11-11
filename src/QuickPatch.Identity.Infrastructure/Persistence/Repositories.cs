@@ -249,12 +249,18 @@ public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnic
         return rows.SingleOrDefault();
     }
 
-    public async Task<TechnicianPage> ListAsync(string? verificationStatus, int page, int size, CancellationToken cancellationToken)
+    public async Task<TechnicianPage> ListAsync(
+        string? verificationStatus, bool lowReputation, int page, int size, CancellationToken cancellationToken)
     {
         var profiles = db.TechnicianProfiles.AsNoTracking();
         if (verificationStatus is not null)
         {
             profiles = profiles.Where(x => x.VerificationStatus == verificationStatus);
+        }
+
+        if (lowReputation)
+        {
+            profiles = profiles.Where(x => x.LowReputation);
         }
 
         var query = profiles.Join(db.Users.AsNoTracking(), p => p.UserId, u => u.Id, (p, u) => new { Profile = p, User = u });
@@ -275,7 +281,10 @@ public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnic
                 x.Profile.SpecialtyId,
                 x.Profile.VerificationStatus,
                 x.Profile.VerificationReason,
-                x.Profile.CreatedAt))
+                x.Profile.CreatedAt,
+                x.Profile.AverageRating,
+                x.Profile.RatingCount,
+                x.Profile.LowReputation))
             .ToListAsync(cancellationToken);
         return new TechnicianPage(items, page, size, total);
     }

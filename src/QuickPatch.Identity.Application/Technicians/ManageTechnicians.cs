@@ -9,7 +9,8 @@ using QuickPatch.Identity.Domain.Technicians;
 namespace QuickPatch.Identity.Application.Technicians;
 
 /// <summary>Consulta de técnicos del panel del administrador (RF-19, <c>GET /v1/admin/technicians</c>).</summary>
-public sealed record ListTechniciansQuery(Guid TenantId, string? VerificationStatus, int Page, int Size);
+/// <param name="LowReputation">Solo los técnicos con reputación baja (contrato 1.12.0, AC9-E2); no suspende a nadie.</param>
+public sealed record ListTechniciansQuery(Guid TenantId, string? VerificationStatus, int Page, int Size, bool LowReputation = false);
 
 /// <summary>Lista paginada de los técnicos y proveedores del tenant del administrador; RLS impide ver otros tenants.</summary>
 public sealed class ListTechniciansHandler(ITenantUnitOfWork unitOfWork, ITechnicianProfileRepository profiles)
@@ -42,7 +43,7 @@ public sealed class ListTechniciansHandler(ITenantUnitOfWork unitOfWork, ITechni
 
         return unitOfWork.ExecuteAsync(
             query.TenantId,
-            ct => profiles.ListAsync(query.VerificationStatus, query.Page, query.Size, ct),
+            ct => profiles.ListAsync(query.VerificationStatus, query.LowReputation, query.Page, query.Size, ct),
             cancellationToken);
     }
 }
