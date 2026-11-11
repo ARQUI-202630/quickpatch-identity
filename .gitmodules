@@ -4,3 +4,6 @@
 [submodule "contracts/kafka"]
 	path = contracts/kafka
 	url = https://github.com/ARQUI-202630/quickpatch-kafka.git
+[submodule "shared/dotnet"]
+	path = shared/dotnet
+	url = https://github.com/ARQUI-202630/quickpatch-shared-dotnet.git

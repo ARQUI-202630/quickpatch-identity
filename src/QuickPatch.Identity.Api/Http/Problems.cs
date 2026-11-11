@@ -1,3 +1,5 @@
+using QuickPatch.Transversal.Http;
+
 namespace QuickPatch.Identity.Api.Http;
 
 /// <summary>Tipos de error del contrato <c>identity.v1.yaml</c> (<c>application/problem+json</c>, RFC 9457).</summary>
