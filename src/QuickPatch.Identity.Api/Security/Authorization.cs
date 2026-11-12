@@ -7,6 +7,7 @@ using Microsoft.IdentityModel.Tokens;
 
 using QuickPatch.Identity.Infrastructure.Options;
 using QuickPatch.Identity.Infrastructure.Security;
+using QuickPatch.Transversal.Security;
 
 namespace QuickPatch.Identity.Api.Security;
 
@@ -17,13 +18,12 @@ public sealed record AuthenticatedUser(Guid UserId, Guid TenantId, string Role)
     {
         ArgumentNullException.ThrowIfNull(principal);
         user = null!;
-        if (!Guid.TryParse(principal.FindFirstValue("sub"), out var userId) || userId == Guid.Empty
-            || !Guid.TryParse(principal.FindFirstValue("tenant_id"), out var tenantId) || tenantId == Guid.Empty)
+        if (!JwtClaims.TryRead(principal, out var userId, out var tenantId, out var role))
         {
             return false;
         }
 
-        user = new AuthenticatedUser(userId, tenantId, principal.FindFirstValue("role") ?? string.Empty);
+        user = new AuthenticatedUser(userId, tenantId, role);
         return true;
     }
 }
@@ -43,16 +43,7 @@ public static class AuthenticationSetup
             .Configure<RsaTokenIssuer>((options, issuer) =>
             {
                 options.MapInboundClaims = false;
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidIssuer = settings.Issuer,
-                    ValidAudience = settings.Audience,
-                    IssuerSigningKey = issuer.ValidationKey,
-                    ValidAlgorithms = [SecurityAlgorithms.RsaSha256],
-                    NameClaimType = "sub",
-                    RoleClaimType = "role",
-                    ClockSkew = TimeSpan.FromSeconds(30),
-                };
+                options.TokenValidationParameters = JwtValidation.CreateParameters(settings.Issuer, settings.Audience, issuer.ValidationKey, TimeSpan.FromSeconds(30));
             });
 
         services.AddAuthorization();

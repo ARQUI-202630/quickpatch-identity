@@ -1,5 +1,3 @@
-using System.Text.RegularExpressions;
-
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -12,12 +10,13 @@ using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
 using QuickPatch.Identity.Infrastructure.Options;
+using QuickPatch.Transversal.Persistence;
 
 namespace QuickPatch.Identity.Infrastructure.Persistence;
 
 /// <summary>
-/// Transacción por tenant (DD 10.2): fija <c>app.current_tenant</c> con <c>set_config(..., true)</c>,
-/// equivalente a <c>SET LOCAL</c>, antes de ejecutar el trabajo; RLS filtra todo lo que se lea o escriba.
+/// Transacción por tenant (DD 10.2) con la implementación común de ADR-020. Traduce los índices únicos del tenant a
+/// las excepciones de dominio de Identity.
 /// </summary>
 public sealed class TenantUnitOfWork(IdentityDbContext db) : ITenantUnitOfWork
 {
@@ -25,21 +24,9 @@ public sealed class TenantUnitOfWork(IdentityDbContext db) : ITenantUnitOfWork
 
     public async Task<T> ExecuteAsync<T>(Guid tenantId, Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(work);
-        if (tenantId == Guid.Empty)
-        {
-            throw new ArgumentException("El tenant es obligatorio.", nameof(tenantId));
-        }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        var tenant = tenantId.ToString();
-        await db.Database.ExecuteSqlAsync($"SELECT set_config('app.current_tenant', {tenant}, true)", cancellationToken);
-
-        var result = await work(cancellationToken);
-
         try
         {
-            await db.SaveChangesAsync(cancellationToken);
+            return await TenantTransaction.ExecuteAsync(db, tenantId, work, cancellationToken);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: UniqueViolation, ConstraintName: "ux_users_tenant_email" })
         {
@@ -53,9 +40,6 @@ public sealed class TenantUnitOfWork(IdentityDbContext db) : ITenantUnitOfWork
         {
             throw new DuplicateCompanyNitException("Ya existe una empresa con ese NIT en el tenant.", ex);
         }
-
-        await transaction.CommitAsync(cancellationToken);
-        return result;
     }
 }
 
@@ -318,21 +302,20 @@ public sealed class TechnicianProfileRepository(IdentityDbContext db) : ITechnic
 /// Transacción de plataforma (DD 10.4): adopta <c>identity_platform</c> (<c>BYPASSRLS</c>) con <c>SET LOCAL ROLE</c>,
 /// que dura solo esta transacción; fuera de ella el servicio sigue con <c>identity_app</c>, sujeto a RLS.
 /// </summary>
-public sealed partial class PlatformUnitOfWork(IdentityDbContext db, IOptions<PlatformOptions> options) : IPlatformUnitOfWork
+public sealed class PlatformUnitOfWork(IdentityDbContext db, IOptions<PlatformOptions> options) : IPlatformUnitOfWork
 {
     public async Task<T> ExecuteAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(work);
         var role = options.Value.Role;
-        if (!RoleName().IsMatch(role))
+        if (!SessionRole.IsValidName(role))
         {
+            // A diferencia de los demás roles, este es obligatorio: sin él no hay vista de plataforma.
             throw new InvalidOperationException("Platform:Role no es un nombre de rol válido.");
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-#pragma warning disable EF1002 // El nombre del rol se validó con una expresión regular estricta; no admite parámetros.
-        await db.Database.ExecuteSqlRawAsync($"SET LOCAL ROLE \"{role}\"", cancellationToken);
-#pragma warning restore EF1002
+        await SessionRole.SetAsync(db, role, cancellationToken);
 
         var result = await work(cancellationToken);
         try
@@ -347,9 +330,6 @@ public sealed partial class PlatformUnitOfWork(IdentityDbContext db, IOptions<Pl
         await transaction.CommitAsync(cancellationToken);
         return result;
     }
-
-    [GeneratedRegex("^[a-z_][a-z0-9_]{0,62}$")]
-    private static partial Regex RoleName();
 }
 
 public sealed class PlatformTenantRepository(IdentityDbContext db) : IPlatformTenantRepository

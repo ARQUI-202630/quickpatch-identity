@@ -13,7 +13,7 @@ using QuickPatch.Transversal.Http;
 var builder = WebApplication.CreateBuilder(args);
 
 // Logs en JSON con scopes (correlationId), para Loki (SCRUM-323) y la auditoría de 403 (RNF-04).
-builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+builder.Logging.AddQuickPatchJsonConsole();
 
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = Problems.Customize);
 builder.Services.AddExceptionHandler<BadRequestExceptionHandler>();

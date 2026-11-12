@@ -401,7 +401,7 @@ namespace QuickPatch.Identity.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("QuickPatch.Identity.Infrastructure.Messaging.OutboxEventRecord", b =>
+            modelBuilder.Entity("QuickPatch.Transversal.Messaging.OutboxEventRecord", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
