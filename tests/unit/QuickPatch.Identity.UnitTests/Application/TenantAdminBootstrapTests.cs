@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using QuickPatch.Identity.Api.Bootstrap;
+using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Domain.Common;

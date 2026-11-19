@@ -40,8 +40,6 @@ public static class DependencyInjection
                 $"Falta PasswordRecovery:EmailHashKey (mínimo {PasswordRecoveryOptions.MinKeyLength} caracteres): Identity no puede limitar la recuperación de contraseña.")
             .ValidateOnStart();
         services.Configure<PasswordOptions>(configuration.GetSection(PasswordOptions.Section));
-        services.Configure<ChannelOptions>(configuration.GetSection(ChannelOptions.Section));
-        services.Configure<InvitationOptions>(configuration.GetSection(InvitationOptions.Section));
         services.Configure<PlatformOptions>(configuration.GetSection(PlatformOptions.Section));
 
         services.AddDbContext<IdentityDbContext>(options =>
@@ -62,8 +60,10 @@ public static class DependencyInjection
         services.AddSingleton<IEmailHasher, HmacEmailHasher>();
         services.Configure<PasswordEncryptionOptions>(configuration.GetSection(PasswordEncryptionOptions.Section));
         services.AddSingleton<PasswordEncryptionKey>();
+        services.AddSingleton<IPasswordDecryptor>(sp => sp.GetRequiredService<PasswordEncryptionKey>());
         services.AddSingleton<RsaTokenIssuer>();
         services.AddSingleton<ITokenIssuer>(sp => sp.GetRequiredService<RsaTokenIssuer>());
+        services.AddSingleton<ITokenValidationKey>(sp => sp.GetRequiredService<RsaTokenIssuer>());
 
         services.AddHealthChecks().AddDbContextCheck<IdentityDbContext>("postgresql", tags: [ReadyTag]);
 

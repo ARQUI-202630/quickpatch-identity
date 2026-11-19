@@ -16,7 +16,7 @@ public class PasswordTransportTests
     {
         var options = Options.Create(new PasswordEncryptionOptions { RequireEncrypted = requireEncrypted });
         var key = new PasswordEncryptionKey(options, NullLogger<PasswordEncryptionKey>.Instance);
-        return (new PasswordTransport(key, options), key);
+        return (new PasswordTransport(key), key);
     }
 
     private static string Encrypt(PasswordEncryptionKey key, string password)

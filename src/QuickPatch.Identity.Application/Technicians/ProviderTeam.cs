@@ -55,7 +55,7 @@ public sealed class CreateTeamTechnicianHandler(
     public async Task<CreateTeamTechnicianResult> HandleAsync(CreateTeamTechnicianCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        User.ValidateTeamTechnician(command.Email, command.FullName, command.Phone, command.DocumentId, command.SpecialtyId);
+        UserRules.ValidateTeamTechnician(command.Email, command.FullName, command.Phone, command.DocumentId, command.SpecialtyId);
         var email = User.NormalizeEmail(command.Email);
         var document = command.DocumentId!.Trim();
         var unusablePassword = hasher.Hash(Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)));

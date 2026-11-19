@@ -1,8 +1,5 @@
-using Microsoft.Extensions.Options;
-
 using QuickPatch.Identity.Api.Http;
-using QuickPatch.Identity.Infrastructure.Options;
-using QuickPatch.Identity.Infrastructure.Security;
+using QuickPatch.Identity.Application.Abstractions;
 
 namespace QuickPatch.Identity.Api.Security;
 
@@ -17,9 +14,9 @@ public sealed record PasswordKeyResponse(string KeyId, string Algorithm, string 
 /// <c>encryptedPassword</c>, nunca las dos. La descifrada sigue el mismo camino que la de antes, así que las reglas de
 /// la contraseña y el hash con BCrypt no cambian.
 /// </summary>
-public sealed class PasswordTransport(PasswordEncryptionKey key, IOptions<PasswordEncryptionOptions> options)
+public sealed class PasswordTransport(IPasswordDecryptor key)
 {
-    public PasswordKeyResponse PublicKey => new(key.KeyId, PasswordEncryptionKey.Algorithm, key.PublicKey);
+    public PasswordKeyResponse PublicKey => new(key.KeyId, key.Algorithm, key.PublicKey);
 
     /// <summary>
     /// Devuelve <c>false</c> con el error para responder. Con <c>true</c>, <paramref name="password"/> es la contraseña o
@@ -31,7 +28,7 @@ public sealed class PasswordTransport(PasswordEncryptionKey key, IOptions<Passwo
         error = null;
         if (encrypted is null)
         {
-            if (plain is not null && options.Value.RequireEncrypted)
+            if (plain is not null && key.RequireEncrypted)
             {
                 error = Invalid("password", "La contraseña debe llegar cifrada en encryptedPassword.");
                 return false;

@@ -47,7 +47,7 @@ public sealed class RegisterTechnicianHandler(
     public async Task<RegisterTechnicianResult> HandleAsync(RegisterTechnicianCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        User.ValidateTechnicianRegistration(
+        UserRules.ValidateTechnicianRegistration(
             command.Email, command.Password, command.FullName, command.Phone, command.DocumentId, command.SpecialtyId, command.Role);
         var email = User.NormalizeEmail(command.Email);
         var document = command.DocumentId!.Trim();

@@ -7,7 +7,6 @@ using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Users;
-using QuickPatch.Identity.Infrastructure.Options;
 
 namespace QuickPatch.Identity.Api.Endpoints;
 

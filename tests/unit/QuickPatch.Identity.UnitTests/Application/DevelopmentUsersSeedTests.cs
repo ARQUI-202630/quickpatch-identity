@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using QuickPatch.Identity.Api.Bootstrap;
+using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Domain.Tenants;
@@ -103,7 +104,7 @@ public class DevelopmentUsersSeedTests
     {
         foreach (var usuario in DevelopmentUsers.All)
         {
-            User.ValidateRegistration(usuario.Email, DevelopmentUsers.Password, usuario.FullName, usuario.Phone);
+            UserRules.ValidateRegistration(usuario.Email, DevelopmentUsers.Password, usuario.FullName, usuario.Phone);
         }
     }
 

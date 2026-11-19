@@ -27,6 +27,9 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddQuickPatchAuthentication(builder.Configuration);
 builder.Services.AddSingleton<PasswordTransport>();
+// Configuración que solo usa el API (SDD 10.3): el tenant del canal y el enlace de las invitaciones.
+builder.Services.Configure<ChannelOptions>(builder.Configuration.GetSection(ChannelOptions.Section));
+builder.Services.Configure<InvitationOptions>(builder.Configuration.GetSection(InvitationOptions.Section));
 
 // Administrador inicial del tenant al desplegar (datos desde un secreto; vacío = no se crea).
 builder.Services.Configure<BootstrapOptions>(builder.Configuration.GetSection(BootstrapOptions.Section));

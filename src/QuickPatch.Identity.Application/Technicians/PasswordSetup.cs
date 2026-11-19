@@ -94,7 +94,7 @@ public sealed class SetupPasswordHandler(
     public async Task<SetupPasswordResult> HandleAsync(SetupPasswordCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        User.ValidatePassword(command.Password);
+        UserRules.ValidatePassword(command.Password);
         if (string.IsNullOrWhiteSpace(command.Token) || command.Token.Length > TokenMaxLength)
         {
             return new SetupPasswordResult.InvalidLink();
