@@ -85,8 +85,12 @@ public class PlatformTenantsFlowTests(IdentityEnvironment env)
             "SELECT count(*) FROM outbox_events WHERE aggregate_id = @id AND event_type = 'tenant.status-changed' AND tenant_id = @id",
             ("id", otro)));
 
-        // En Kafka: el publicador los envía al topic con la clave data.tenantId y el estado completo, en orden.
-        var mensajes = env.ConsumeAll("tenant.status-changed", otro.ToString(), 2);
+        // En Kafka: el publicador los envía al topic con la clave data.tenantId y el estado completo.
+        // El orden de llegada no es parte del contrato: si un envío falla y se reintenta, el siguiente puede salir antes.
+        // Por eso el evento lleva updatedAt como versión (ADR-017) y el consumidor descarta lo atrasado. Se ordena igual.
+        var mensajes = env.ConsumeAll("tenant.status-changed", otro.ToString(), 2)
+            .OrderBy(m => m.GetProperty("data").GetProperty("updatedAt").GetDateTimeOffset())
+            .ToList();
         Assert.Equal(2, mensajes.Count);
         Assert.All(mensajes, m =>
         {
