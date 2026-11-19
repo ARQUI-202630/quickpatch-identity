@@ -15,7 +15,7 @@ public class UserTests
     [InlineData(null)]
     public void ValidateRegistration_CorreoInvalido_Falla(string? email)
     {
-        var ex = Assert.Throws<DomainValidationException>(() => User.ValidateRegistration(email, "Segura123", "Ana Pérez", null));
+        var ex = Assert.Throws<DomainValidationException>(() => UserRules.ValidateRegistration(email, "Segura123", "Ana Pérez", null));
 
         Assert.True(ex.Errors.ContainsKey("email"));
     }
@@ -25,7 +25,7 @@ public class UserTests
     [InlineData(null)]
     public void ValidateRegistration_ContrasenaCorta_Falla(string? password)
     {
-        var ex = Assert.Throws<DomainValidationException>(() => User.ValidateRegistration("ana@correo.co", password, "Ana Pérez", null));
+        var ex = Assert.Throws<DomainValidationException>(() => UserRules.ValidateRegistration("ana@correo.co", password, "Ana Pérez", null));
 
         Assert.True(ex.Errors.ContainsKey("password"));
     }
@@ -33,7 +33,7 @@ public class UserTests
     [Fact]
     public void ValidateRegistration_NombreYTelefonoInvalidos_Fallan()
     {
-        var ex = Assert.Throws<DomainValidationException>(() => User.ValidateRegistration("ana@correo.co", "Segura123", "A", new string('1', 31)));
+        var ex = Assert.Throws<DomainValidationException>(() => UserRules.ValidateRegistration("ana@correo.co", "Segura123", "A", new string('1', 31)));
 
         Assert.True(ex.Errors.ContainsKey("fullName"));
         Assert.True(ex.Errors.ContainsKey("phone"));
@@ -42,7 +42,7 @@ public class UserTests
     [Fact]
     public void ValidateRegistration_DatosValidos_NoFalla()
     {
-        User.ValidateRegistration(" Ana@Correo.CO ", "Segura123", "Ana Pérez", "3001234567");
+        UserRules.ValidateRegistration(" Ana@Correo.CO ", "Segura123", "Ana Pérez", "3001234567");
     }
 
     [Fact]

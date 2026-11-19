@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Infrastructure.Options;
 
 namespace QuickPatch.Identity.Infrastructure.Security;
@@ -13,9 +14,9 @@ namespace QuickPatch.Identity.Infrastructure.Security;
 /// pública en SPKI y descifra con RSA-OAEP-SHA256. El identificador es la huella SHA-256 de la llave pública: si la llave
 /// cambia, el cliente lo ve y pide la nueva.
 /// </summary>
-public sealed partial class PasswordEncryptionKey : IDisposable
+public sealed partial class PasswordEncryptionKey : IPasswordDecryptor, IDisposable
 {
-    public const string Algorithm = "RSA-OAEP-256";
+    public const string AlgorithmName = "RSA-OAEP-256";
 
     /// <summary>Largo máximo del texto cifrado en base64url: una llave de 4096 bits da 683 caracteres.</summary>
     public const int MaxCiphertextLength = 700;
@@ -25,6 +26,7 @@ public sealed partial class PasswordEncryptionKey : IDisposable
     public PasswordEncryptionKey(IOptions<PasswordEncryptionOptions> options, ILogger<PasswordEncryptionKey> logger)
     {
         rsa = RSA.Create();
+        RequireEncrypted = options.Value.RequireEncrypted;
         var pem = options.Value.PrivateKeyPem;
         if (string.IsNullOrWhiteSpace(pem))
         {
@@ -45,6 +47,10 @@ public sealed partial class PasswordEncryptionKey : IDisposable
     public string PublicKey { get; }
 
     public string KeyId { get; }
+
+    public string Algorithm => AlgorithmName;
+
+    public bool RequireEncrypted { get; }
 
     /// <summary>Descifra la contraseña; devuelve <c>null</c> si el texto no es base64url válido o no descifra con esta llave.</summary>
     public string? TryDecrypt(string ciphertext)

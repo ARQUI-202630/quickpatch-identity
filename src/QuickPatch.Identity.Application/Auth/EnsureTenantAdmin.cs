@@ -32,7 +32,7 @@ public sealed class EnsureTenantAdminHandler(
             throw new ArgumentException($"Rol de administrador no válido: {command.Role}", nameof(command));
         }
 
-        User.ValidateRegistration(command.Email, command.Password, command.FullName, phone: null);
+        UserRules.ValidateRegistration(command.Email, command.Password, command.FullName, phone: null);
         var email = User.NormalizeEmail(command.Email);
 
         try

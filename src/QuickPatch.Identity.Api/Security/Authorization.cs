@@ -5,8 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.IdentityModel.Tokens;
 
-using QuickPatch.Identity.Infrastructure.Options;
-using QuickPatch.Identity.Infrastructure.Security;
+using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Transversal.Security;
 
 namespace QuickPatch.Identity.Api.Security;
@@ -36,14 +35,13 @@ public static class AuthenticationSetup
     /// </summary>
     public static IServiceCollection AddQuickPatchAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
-        var settings = configuration.GetSection(JwtIssuerOptions.Section).Get<JwtIssuerOptions>() ?? new JwtIssuerOptions();
-
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
-            .Configure<RsaTokenIssuer>((options, issuer) =>
+            .Configure<ITokenValidationKey>((options, key) =>
             {
                 options.MapInboundClaims = false;
-                options.TokenValidationParameters = JwtValidation.CreateParameters(settings.Issuer, settings.Audience, issuer.ValidationKey, TimeSpan.FromSeconds(30));
+                options.TokenValidationParameters = JwtValidation.CreateParameters(
+                    key.Issuer, key.Audience, new RsaSecurityKey(key.PublicKey), TimeSpan.FromSeconds(30));
             });
 
         services.AddAuthorization();

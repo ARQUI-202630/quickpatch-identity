@@ -1,9 +1,9 @@
 using Microsoft.Extensions.Options;
 
+using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Auth;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Users;
-using QuickPatch.Identity.Infrastructure.Options;
 
 namespace QuickPatch.Identity.Api.Bootstrap;
 

@@ -27,7 +27,7 @@ public sealed class RegisterClientHandler(
     public async Task<RegisterClientResult> HandleAsync(RegisterClientCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        User.ValidateRegistration(command.Email, command.Password, command.FullName, command.Phone);
+        UserRules.ValidateRegistration(command.Email, command.Password, command.FullName, command.Phone);
         var email = User.NormalizeEmail(command.Email);
 
         try
