@@ -5,7 +5,6 @@ using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
-using QuickPatch.Identity.Infrastructure.Messaging;
 using QuickPatch.Transversal.Messaging;
 
 namespace QuickPatch.Identity.Infrastructure.Persistence;

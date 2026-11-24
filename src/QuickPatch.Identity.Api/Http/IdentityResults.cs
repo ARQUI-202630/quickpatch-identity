@@ -20,9 +20,6 @@ namespace QuickPatch.Identity.Api.Http;
 /// <summary>Respuestas HTTP comunes de los endpoints de Identity (Problem Details del contrato).</summary>
 internal static class IdentityResults
 {
-    /// <summary>Canal de las peticiones sin token (DD 8.1). El Gateway la sobrescribe; el cuerpo nunca trae el tenant.</summary>
-    internal const string ChannelHeader = "X-Channel-Id";
-
     internal static LockedResult Locked(DateTimeOffset until, DateTimeOffset now)
     {
         var seconds = Math.Max(1, (int)Math.Ceiling((until - now).TotalSeconds));
@@ -39,10 +36,6 @@ internal static class IdentityResults
         statusCode: StatusCodes.Status409Conflict,
         type: Problems.EmailTaken,
         title: "El correo ya está registrado");
-
-    /// <summary>Tenant del canal por <c>X-Channel-Id</c> (RN-U5, DEP-09); nunca de un campo de la petición.</summary>
-    internal static bool TryChannelTenant(HttpContext context, IOptions<ChannelOptions> channel, out Guid tenantId) =>
-        channel.Value.TryResolve(context.Request.Headers[ChannelHeader].ToString(), out tenantId);
 
     internal static IResult ChannelNotConfigured() => Results.Problem(
         statusCode: StatusCodes.Status503ServiceUnavailable,

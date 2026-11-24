@@ -44,7 +44,7 @@ public static class AuthEndpoints
         RegisterClientHandler handler,
         CancellationToken cancellationToken)
     {
-        if (!TryChannelTenant(context, channel, out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -81,7 +81,7 @@ public static class AuthEndpoints
         RegisterTechnicianHandler handler,
         CancellationToken cancellationToken)
     {
-        if (!TryChannelTenant(context, channel, out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -132,7 +132,7 @@ public static class AuthEndpoints
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        if (!TryChannelTenant(context, channel, out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }

@@ -15,6 +15,7 @@ namespace QuickPatch.Identity.UnitTests.Architecture;
 /// </summary>
 public sealed class ArchitectureTests
 {
+    private const string DomainNs = "QuickPatch.Identity.Domain";
     private const string ApiNs = "QuickPatch.Identity.Api";
     private const string ApplicationNs = "QuickPatch.Identity.Application";
     private const string InfrastructureNs = "QuickPatch.Identity.Infrastructure";
@@ -65,6 +66,22 @@ public sealed class ArchitectureTests
                 ApplicationNs + ".Abstractions.ITechnicianProfileRepository",
                 ApplicationNs + ".Abstractions.IClientCompanyRepository")
             .GetResult());
+
+    [Fact]
+    public void NingunaCapa_TieneCiclosEntreSusCarpetas()
+    {
+        var cycles = new[] { (Domain, DomainNs), (Application, ApplicationNs), (Infrastructure, InfrastructureNs), (Api, ApiNs) }
+            .SelectMany(layer => LayerRules.FolderCycles(layer.Item1, layer.Item2))
+            .ToList();
+        Assert.True(cycles.Count == 0, "Viola SDD 10.3.2 (ciclo entre carpetas): " + string.Join("; ", cycles));
+    }
+
+    [Fact]
+    public void Application_UnCasoDeUsoPorArchivo()
+    {
+        var files = LayerRules.FilesWithSeveralUseCases("QuickPatch.Identity.Application");
+        Assert.True(files.Count == 0, "Viola SDD 10.3.2 (varios casos de uso en un archivo): " + string.Join("; ", files));
+    }
 
     private static void AssertOk(TestResult result) =>
         Assert.True(

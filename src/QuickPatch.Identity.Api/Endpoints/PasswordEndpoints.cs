@@ -43,7 +43,7 @@ public static class PasswordEndpoints
         SetupPasswordHandler handler,
         CancellationToken cancellationToken)
     {
-        if (!TryChannelTenant(context, channel, out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -80,7 +80,7 @@ public static class PasswordEndpoints
         TimeProvider clock,
         CancellationToken cancellationToken)
     {
-        if (!TryChannelTenant(context, channel, out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }
@@ -109,7 +109,7 @@ public static class PasswordEndpoints
         ConfirmPasswordRecoveryHandler handler,
         CancellationToken cancellationToken)
     {
-        if (!TryChannelTenant(context, channel, out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return ChannelNotConfigured();
         }

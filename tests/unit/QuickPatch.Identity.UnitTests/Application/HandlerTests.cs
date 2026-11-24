@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Tenants;
@@ -25,7 +26,7 @@ public class IdentityHandlerTests
 
     private RegisterClientHandler Register() => new(store, store, store, hasher, clock);
 
-    private RegisterTechnicianHandler RegisterTechnician() => new(store, store, store, store, store, hasher, clock);
+    private RegisterTechnicianHandler RegisterTechnician() => new(store, store, new TechnicianAccounts(store, store, store), hasher, clock);
 
     private LoginHandler Login() =>
         new(store, store, store, store, hasher, new FakeTokens(), LockoutPolicy.Default, clock, NullLogger<LoginHandler>.Instance);

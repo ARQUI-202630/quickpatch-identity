@@ -43,8 +43,6 @@ public sealed record CompanyUserCreated(
 /// </summary>
 public static class CompanyEndpoints
 {
-    private const string ChannelHeader = "X-Channel-Id";
-
     public static IEndpointRouteBuilder MapCompanyEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/v1/auth/register/company", RegisterCompanyAsync).WithName("registerCompany").AllowAnonymous();
@@ -65,7 +63,7 @@ public static class CompanyEndpoints
         RegisterCompanyHandler handler,
         CancellationToken cancellationToken)
     {
-        if (!channel.Value.TryResolve(context.Request.Headers[ChannelHeader].ToString(), out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return Results.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
