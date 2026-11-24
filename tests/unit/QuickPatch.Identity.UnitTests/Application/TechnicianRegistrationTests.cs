@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Application.Users;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Technicians;
@@ -24,7 +25,7 @@ public class TechnicianRegistrationTests
         store.Tenants.Add(new Tenant(tenant, "Alfa", "900", Tenant.Active, Now));
     }
 
-    private RegisterTechnicianHandler Handler() => new(store, store, store, store, store, hasher, new MutableClock(Now));
+    private RegisterTechnicianHandler Handler() => new(store, store, new TechnicianAccounts(store, store, store), hasher, new MutableClock(Now));
 
     private RegisterTechnicianCommand Command(string email = "carlos@correo.co", string document = "1020304050", string role = Roles.Tecnico, Guid? tenantId = null) =>
         new(tenantId ?? tenant, email, "Segura123", "Carlos Pérez", "3001234567", document, specialty, role);
