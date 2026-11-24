@@ -102,6 +102,30 @@ public class TechniciansAdminFlowTests(IdentityEnvironment env)
     }
 
     [Fact]
+    public async Task Listar_ConReputacionBaja_FiltraBajoRlsYNoSuspende()
+    {
+        // AC9-E2 (SCRUM-642): la reputación la proyecta el consumidor de Ranking; aquí se fija directo en la base.
+        await using var app = AppWithTenantAdmin();
+        var bajo = await RegisterAsync(app);
+        var bueno = await RegisterAsync(app);
+        await env.ExecuteAdminAsync($"UPDATE technician_profiles SET average_rating = 2.4, rating_count = 6, low_reputation = true WHERE user_id = '{bajo}'");
+        await env.ExecuteAdminAsync($"UPDATE technician_profiles SET average_rating = 4.8, rating_count = 9, low_reputation = false WHERE user_id = '{bueno}'");
+        using var client = await LoggedInAsync(app);
+
+        using var response = await client.GetAsync(new Uri("/v1/admin/technicians?lowReputation=true&size=100", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items").EnumerateArray().ToList();
+        var item = items.Single(x => x.GetProperty("userId").GetGuid() == bajo);
+        Assert.Equal(2.4m, item.GetProperty("averageRating").GetDecimal());
+        Assert.Equal(6, item.GetProperty("ratingCount").GetInt32());
+        Assert.True(item.GetProperty("lowReputation").GetBoolean());
+        Assert.DoesNotContain(items, x => x.GetProperty("userId").GetGuid() == bueno);
+        Assert.All(items, x => Assert.True(x.GetProperty("lowReputation").GetBoolean()));
+        Assert.Equal("pendiente", await env.ScalarAdminAsync("SELECT verification_status FROM technician_profiles WHERE user_id = @u", ("u", bajo)));
+    }
+
+    [Fact]
     public async Task TecnicoDeOtroTenant_404_YNoCambia()
     {
         var otro = Guid.NewGuid();

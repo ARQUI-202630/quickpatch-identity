@@ -9,6 +9,7 @@ using QuickPatch.Identity.Infrastructure.Messaging;
 using QuickPatch.Identity.Infrastructure.Options;
 using QuickPatch.Identity.Infrastructure.Persistence;
 using QuickPatch.Identity.Infrastructure.Security;
+using QuickPatch.Transversal.Messaging;
 
 namespace QuickPatch.Identity.Infrastructure;
 
@@ -39,8 +40,6 @@ public static class DependencyInjection
                 $"Falta PasswordRecovery:EmailHashKey (mínimo {PasswordRecoveryOptions.MinKeyLength} caracteres): Identity no puede limitar la recuperación de contraseña.")
             .ValidateOnStart();
         services.Configure<PasswordOptions>(configuration.GetSection(PasswordOptions.Section));
-        services.Configure<ChannelOptions>(configuration.GetSection(ChannelOptions.Section));
-        services.Configure<InvitationOptions>(configuration.GetSection(InvitationOptions.Section));
         services.Configure<PlatformOptions>(configuration.GetSection(PlatformOptions.Section));
 
         services.AddDbContext<IdentityDbContext>(options =>
@@ -59,8 +58,12 @@ public static class DependencyInjection
         services.AddScoped<IOutbox, EfOutbox>();
         services.AddSingleton<IPasswordHasher, BCryptPasswordHasher>();
         services.AddSingleton<IEmailHasher, HmacEmailHasher>();
+        services.Configure<PasswordEncryptionOptions>(configuration.GetSection(PasswordEncryptionOptions.Section));
+        services.AddSingleton<PasswordEncryptionKey>();
+        services.AddSingleton<IPasswordDecryptor>(sp => sp.GetRequiredService<PasswordEncryptionKey>());
         services.AddSingleton<RsaTokenIssuer>();
         services.AddSingleton<ITokenIssuer>(sp => sp.GetRequiredService<RsaTokenIssuer>());
+        services.AddSingleton<ITokenValidationKey>(sp => sp.GetRequiredService<RsaTokenIssuer>());
 
         services.AddHealthChecks().AddDbContextCheck<IdentityDbContext>("postgresql", tags: [ReadyTag]);
 
@@ -77,8 +80,8 @@ public static class DependencyInjection
                 EnableIdempotence = true,
             }).Build());
 
-            services.AddSingleton<OutboxPublisher>();
-            services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher>());
+            services.AddSingleton<OutboxPublisher<IdentityDbContext, OutboxEventRecord>>();
+            services.AddHostedService(sp => sp.GetRequiredService<OutboxPublisher<IdentityDbContext, OutboxEventRecord>>());
 
             // Reputación que publica Ranking (ADR-027): se proyecta en technician_profiles.
             services.AddSingleton(_ => new ConsumerBuilder<string, string>(new ConsumerConfig

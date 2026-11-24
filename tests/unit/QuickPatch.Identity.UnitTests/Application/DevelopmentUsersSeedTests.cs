@@ -4,8 +4,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using QuickPatch.Identity.Api.Bootstrap;
+using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application.Abstractions;
 using QuickPatch.Identity.Application.Auth;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Domain.Users;
 using QuickPatch.Identity.Infrastructure.Options;
@@ -39,6 +41,7 @@ public class DevelopmentUsersSeedTests
         services.AddSingleton<TimeProvider>(new MutableClock(Now));
         services.AddScoped<EnsureTenantAdminHandler>();
         services.AddScoped<RegisterClientHandler>();
+        services.AddScoped<TechnicianAccounts>();
         services.AddScoped<RegisterTechnicianHandler>();
         var provider = services.BuildServiceProvider();
         return new DevelopmentUsersSeed(
@@ -103,7 +106,7 @@ public class DevelopmentUsersSeedTests
     {
         foreach (var usuario in DevelopmentUsers.All)
         {
-            User.ValidateRegistration(usuario.Email, DevelopmentUsers.Password, usuario.FullName, usuario.Phone);
+            UserRules.ValidateRegistration(usuario.Email, DevelopmentUsers.Password, usuario.FullName, usuario.Phone);
         }
     }
 

@@ -32,7 +32,7 @@ public class TechnicianVerificationTests
     private async Task<Guid> RegisterAsync(Guid? tenantId = null, string role = Roles.Tecnico)
     {
         clock.Now = clock.Now.AddMinutes(1);
-        var handler = new RegisterTechnicianHandler(store, store, store, store, store, new FakeHasher(), clock);
+        var handler = new RegisterTechnicianHandler(store, store, new TechnicianAccounts(store, store, store), new FakeHasher(), clock);
         var result = await handler.HandleAsync(
             new RegisterTechnicianCommand(
                 tenantId ?? tenant, $"t{Guid.NewGuid():N}@correo.co", "Segura123", "Carlos Pérez", "3001234567",

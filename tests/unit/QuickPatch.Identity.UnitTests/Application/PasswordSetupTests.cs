@@ -143,6 +143,6 @@ public class PasswordSetupTests
     {
         await Assert.ThrowsAsync<ArgumentNullException>(() => Setup().HandleAsync(null!, CancellationToken.None));
         await Assert.ThrowsAsync<ArgumentNullException>(() => Renew().HandleAsync(null!, CancellationToken.None));
-        Assert.Throws<DomainValidationException>(() => User.ValidatePassword(null));
+        Assert.Throws<DomainValidationException>(() => UserRules.ValidatePassword(null));
     }
 }

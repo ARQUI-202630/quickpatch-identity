@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authorization.Policy;
 using Microsoft.IdentityModel.Tokens;
 
-using QuickPatch.Identity.Infrastructure.Options;
-using QuickPatch.Identity.Infrastructure.Security;
+using QuickPatch.Identity.Application.Abstractions;
+using QuickPatch.Transversal.Security;
 
 namespace QuickPatch.Identity.Api.Security;
 
@@ -17,13 +17,12 @@ public sealed record AuthenticatedUser(Guid UserId, Guid TenantId, string Role)
     {
         ArgumentNullException.ThrowIfNull(principal);
         user = null!;
-        if (!Guid.TryParse(principal.FindFirstValue("sub"), out var userId) || userId == Guid.Empty
-            || !Guid.TryParse(principal.FindFirstValue("tenant_id"), out var tenantId) || tenantId == Guid.Empty)
+        if (!JwtClaims.TryRead(principal, out var userId, out var tenantId, out var role))
         {
             return false;
         }
 
-        user = new AuthenticatedUser(userId, tenantId, principal.FindFirstValue("role") ?? string.Empty);
+        user = new AuthenticatedUser(userId, tenantId, role);
         return true;
     }
 }
@@ -36,23 +35,13 @@ public static class AuthenticationSetup
     /// </summary>
     public static IServiceCollection AddQuickPatchAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
-        var settings = configuration.GetSection(JwtIssuerOptions.Section).Get<JwtIssuerOptions>() ?? new JwtIssuerOptions();
-
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
-            .Configure<RsaTokenIssuer>((options, issuer) =>
+            .Configure<ITokenValidationKey>((options, key) =>
             {
                 options.MapInboundClaims = false;
-                options.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidIssuer = settings.Issuer,
-                    ValidAudience = settings.Audience,
-                    IssuerSigningKey = issuer.ValidationKey,
-                    ValidAlgorithms = [SecurityAlgorithms.RsaSha256],
-                    NameClaimType = "sub",
-                    RoleClaimType = "role",
-                    ClockSkew = TimeSpan.FromSeconds(30),
-                };
+                options.TokenValidationParameters = JwtValidation.CreateParameters(
+                    key.Issuer, key.Audience, new RsaSecurityKey(key.PublicKey), TimeSpan.FromSeconds(30));
             });
 
         services.AddAuthorization();

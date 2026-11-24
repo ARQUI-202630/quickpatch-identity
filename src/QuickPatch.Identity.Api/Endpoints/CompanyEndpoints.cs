@@ -7,7 +7,6 @@ using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Domain.Common;
 using QuickPatch.Identity.Domain.Companies;
 using QuickPatch.Identity.Domain.Users;
-using QuickPatch.Identity.Infrastructure.Options;
 
 namespace QuickPatch.Identity.Api.Endpoints;
 
@@ -44,8 +43,6 @@ public sealed record CompanyUserCreated(
 /// </summary>
 public static class CompanyEndpoints
 {
-    private const string ChannelHeader = "X-Channel-Id";
-
     public static IEndpointRouteBuilder MapCompanyEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/v1/auth/register/company", RegisterCompanyAsync).WithName("registerCompany").AllowAnonymous();
@@ -62,10 +59,11 @@ public static class CompanyEndpoints
         RegisterCompanyRequest body,
         HttpContext context,
         IOptions<ChannelOptions> channel,
+        PasswordTransport passwords,
         RegisterCompanyHandler handler,
         CancellationToken cancellationToken)
     {
-        if (!channel.Value.TryResolve(context.Request.Headers[ChannelHeader].ToString(), out var tenantId))
+        if (!ChannelTenant.TryResolve(context, channel, out var tenantId))
         {
             return Results.Problem(
                 statusCode: StatusCodes.Status503ServiceUnavailable,
@@ -75,6 +73,11 @@ public static class CompanyEndpoints
 
         var data = body.Company;
         var user = body.User;
+        if (!passwords.TryResolve(user?.Password, user?.EncryptedPassword, out var password, out var passwordError))
+        {
+            return passwordError!;
+        }
+
         try
         {
             var result = await handler.HandleAsync(
@@ -85,7 +88,7 @@ public static class CompanyEndpoints
                     data?.ContactEmail,
                     data?.ContactPhone,
                     user?.Email,
-                    user?.Password,
+                    password,
                     user?.FullName,
                     user?.Phone),
                 cancellationToken);

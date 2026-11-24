@@ -64,7 +64,7 @@ public sealed class HmacEmailHasher : IEmailHasher
 /// Firma el JWT con RS256 (llave privada solo en Identity). Claims: <c>sub</c>, <c>tenant_id</c>, <c>role</c>,
 /// <c>iss</c>, <c>aud</c>, <c>exp</c> y <c>jti</c>; para <c>empresa_contacto</c>, también <c>company_id</c> (contrato 1.8.0).
 /// </summary>
-public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
+public sealed class RsaTokenIssuer : ITokenIssuer, ITokenValidationKey, IDisposable
 {
     private readonly JwtIssuerOptions options;
     private readonly RSA rsa;
@@ -90,11 +90,15 @@ public sealed class RsaTokenIssuer : ITokenIssuer, IDisposable
             CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false },
         };
         credentials = new SigningCredentials(signingKey, SecurityAlgorithms.RsaSha256);
-        ValidationKey = new RsaSecurityKey(rsa.ExportParameters(includePrivateParameters: false));
+        PublicKey = rsa.ExportParameters(includePrivateParameters: false);
     }
 
-    /// <summary>Llave pública para validar los tokens emitidos.</summary>
-    public SecurityKey ValidationKey { get; }
+    public string Issuer => options.Issuer;
+
+    public string Audience => options.Audience;
+
+    /// <summary>Llave pública para validar los tokens emitidos (sin la parte privada).</summary>
+    public RSAParameters PublicKey { get; }
 
     /// <summary>Llave pública en PEM, la que reciben los demás servicios en <c>Jwt:PublicKeyPem</c>.</summary>
     public string PublicKeyPem => rsa.ExportSubjectPublicKeyInfoPem();

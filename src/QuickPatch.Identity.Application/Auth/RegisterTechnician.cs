@@ -1,5 +1,5 @@
 using QuickPatch.Identity.Application.Abstractions;
-using QuickPatch.Identity.Application.Events;
+using QuickPatch.Identity.Application.Technicians;
 using QuickPatch.Identity.Domain.Technicians;
 using QuickPatch.Identity.Domain.Users;
 
@@ -38,16 +38,14 @@ public abstract record RegisterTechnicianResult
 public sealed class RegisterTechnicianHandler(
     ITenantUnitOfWork unitOfWork,
     ITenantRepository tenants,
-    IUserRepository users,
-    ITechnicianProfileRepository profiles,
-    IOutbox outbox,
+    TechnicianAccounts accounts,
     IPasswordHasher hasher,
     TimeProvider clock)
 {
     public async Task<RegisterTechnicianResult> HandleAsync(RegisterTechnicianCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
-        User.ValidateTechnicianRegistration(
+        UserRules.ValidateTechnicianRegistration(
             command.Email, command.Password, command.FullName, command.Phone, command.DocumentId, command.SpecialtyId, command.Role);
         var email = User.NormalizeEmail(command.Email);
         var document = command.DocumentId!.Trim();
@@ -64,24 +62,20 @@ public sealed class RegisterTechnicianHandler(
                         return new RegisterTechnicianResult.TenantDisabled();
                     }
 
-                    if (await users.EmailExistsAsync(email, ct))
+                    switch (await accounts.FindConflictAsync(email, document, ct))
                     {
-                        return new RegisterTechnicianResult.EmailTaken();
-                    }
-
-                    if (await users.DocumentExistsAsync(document, ct))
-                    {
-                        return new RegisterTechnicianResult.DocumentTaken();
+                        case TechnicianAccountConflict.EmailTaken:
+                            return new RegisterTechnicianResult.EmailTaken();
+                        case TechnicianAccountConflict.DocumentTaken:
+                            return new RegisterTechnicianResult.DocumentTaken();
                     }
 
                     var now = clock.GetUtcNow();
                     var user = User.Create(
                         command.TenantId, email, hasher.Hash(command.Password!), command.Role!, command.FullName!, command.Phone, now, document);
                     var profile = TechnicianProfile.CreatePending(user.Id, command.TenantId, command.SpecialtyId!.Value, now);
-                    users.Add(user);
-                    profiles.Add(profile);
                     var correlationId = command.CorrelationId == Guid.Empty ? Guid.CreateVersion7(now) : command.CorrelationId;
-                    outbox.Enqueue(TechnicianRegisteredEvent.From(profile, correlationId, now));
+                    accounts.Add(user, profile, correlationId, now);
                     return new RegisterTechnicianResult.Registered(user, profile);
                 },
                 cancellationToken);

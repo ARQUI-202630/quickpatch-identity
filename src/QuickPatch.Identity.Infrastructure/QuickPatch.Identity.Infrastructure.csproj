@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\..\shared\dotnet\src\QuickPatch.Transversal.Messaging\QuickPatch.Transversal.Messaging.csproj" />
     <ProjectReference Include="..\QuickPatch.Identity.Application\QuickPatch.Identity.Application.csproj" />
     <ProjectReference Include="..\QuickPatch.Identity.Domain\QuickPatch.Identity.Domain.csproj" />
   </ItemGroup>

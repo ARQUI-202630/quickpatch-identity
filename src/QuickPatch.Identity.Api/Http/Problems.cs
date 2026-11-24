@@ -1,3 +1,5 @@
+using QuickPatch.Transversal.Http;
+
 namespace QuickPatch.Identity.Api.Http;
 
 /// <summary>Tipos de error del contrato <c>identity.v1.yaml</c> (<c>application/problem+json</c>, RFC 9457).</summary>
@@ -21,6 +23,7 @@ public static class Problems
     public const string PasswordAlreadySet = Base + "contrasena-definida";
     public const string InvalidTransition = Base + "transicion-invalida";
     public const string TooManyRequests = Base + "demasiadas-solicitudes";
+    public const string UnknownPasswordKey = Base + "llave-desconocida";
 
     /// <summary>Agrega <c>correlationId</c> y el tipo según el código a todo Problem Details del servicio.</summary>
     public static void Customize(ProblemDetailsContext context)

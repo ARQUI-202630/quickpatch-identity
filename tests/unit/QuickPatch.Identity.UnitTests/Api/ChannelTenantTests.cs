@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 
 using Microsoft.AspNetCore.Hosting;
 
+using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Domain.Tenants;
 using QuickPatch.Identity.Infrastructure.Options;
 

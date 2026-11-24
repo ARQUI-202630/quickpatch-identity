@@ -8,11 +8,12 @@ using QuickPatch.Identity.Api.Http;
 using QuickPatch.Identity.Api.Security;
 using QuickPatch.Identity.Application;
 using QuickPatch.Identity.Infrastructure;
+using QuickPatch.Transversal.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Logs en JSON con scopes (correlationId), para Loki (SCRUM-323) y la auditoría de 403 (RNF-04).
-builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+builder.Logging.AddQuickPatchJsonConsole();
 
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = Problems.Customize);
 builder.Services.AddExceptionHandler<BadRequestExceptionHandler>();
@@ -25,6 +26,10 @@ builder.Services.AddHealthChecks();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddQuickPatchAuthentication(builder.Configuration);
+builder.Services.AddSingleton<PasswordTransport>();
+// Configuración que solo usa el API (SDD 10.3): el tenant del canal y el enlace de las invitaciones.
+builder.Services.Configure<ChannelOptions>(builder.Configuration.GetSection(ChannelOptions.Section));
+builder.Services.Configure<InvitationOptions>(builder.Configuration.GetSection(InvitationOptions.Section));
 
 // Administrador inicial del tenant al desplegar (datos desde un secreto; vacío = no se crea).
 builder.Services.Configure<BootstrapOptions>(builder.Configuration.GetSection(BootstrapOptions.Section));
